@@ -52,6 +52,10 @@
 #include <DeviceInfoProviderImpl.h>
 #endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
 
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+#include <tracing/esp32_diagnostic_trace/DiagnosticTracing.h>
+#endif
+
 namespace {
 #if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
 chip::DeviceLayer::ESP32FactoryDataProvider sFactoryDataProvider;
@@ -75,6 +79,11 @@ static AppDeviceCallbacks EchoCallbacks;
 static void InitServer(intptr_t context)
 {
     Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
+
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    static Tracing::Insights::ESP32Diagnostics diagnosticBackend;
+    Tracing::Register(diagnosticBackend);
+#endif
 }
 
 extern "C" void app_main()

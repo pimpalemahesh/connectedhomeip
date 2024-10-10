@@ -19,12 +19,14 @@
 #pragma once
 
 #include <app/clusters/diagnostic-logs-server/DiagnosticLogsProviderDelegate.h>
+#include <src/tracing/esp32_diagnostic_trace/diagnostic_storage.h>
 #include <map>
 
 #if defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 #include <esp_core_dump.h>
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
+using chip::Tracing::DiagnosticStorage;
 namespace chip {
 namespace app {
 namespace Clusters {

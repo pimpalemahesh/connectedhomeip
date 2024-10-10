@@ -70,15 +70,15 @@ CHIP_ERROR DiagnosticStorage::StoreData(const char* key, uint16_t value)
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan* payload)
+CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan payload)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     CircularTLVReader reader;
     reader.Init(mCircularBuffer);
 
     size_t dataSize = 0;
-    size_t maxSize = payload->size();
-    uint8_t* buffer = const_cast<uint8_t*>(payload->data());
+    size_t maxSize = payload.size();
+    uint8_t* buffer = const_cast<uint8_t*>(payload.data());
 
     // Retrieve elements up to RETRIEVE_DATA_CHUNK_NUMBER entries
     for (size_t count = 0; count < RETRIEVE_DATA_CHUNK_NUMBER; ++count) {
@@ -109,9 +109,19 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan* payload)
                 return err;
             }
 
-            char key[40];
+            char *key = nullptr;
+
+            uint32_t keyLength = reader.GetLength() + 1;
+            key = (char *) chip::Platform::MemoryAlloc(keyLength);
+
             if (reader.GetTag() == chip::TLV::ContextTag(1)) {
-                err = reader.GetString(key, sizeof(key)); 
+                err = reader.Expect(chip::TLV::TLVType::kTLVType_UTF8String, chip::TLV::ContextTag(1));
+                if (err != CHIP_NO_ERROR) {
+                    ChipLogError(DeviceLayer, "UnExpected TLV element. Expected String type");
+                    return err;
+                }
+                
+                err = reader.GetString(key, keyLength); 
                 if (err != CHIP_NO_ERROR) {
                     ChipLogError(DeviceLayer, "Failed to read key string from TLV: %s", chip::ErrorStr(err));
                     reader.ExitContainer(outerContainer);
@@ -172,6 +182,7 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan* payload)
             buffer[dataSize++] = '\n';
 
             printf("--------------- Key: %s, Value: %lu into payload---------------\n", key, value);
+            chip::Platform::MemoryFree(key);
             mCircularBuffer.EvictHead();
         }
         else {
@@ -181,7 +192,7 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan* payload)
     }
 
     // Assign the payload with the size of the data written
-    *payload = ByteSpan(buffer, dataSize);
+    payload = ByteSpan(buffer, dataSize);
 
     printf("Retrieved data size: %d bytes\n", static_cast<int>(dataSize));
 

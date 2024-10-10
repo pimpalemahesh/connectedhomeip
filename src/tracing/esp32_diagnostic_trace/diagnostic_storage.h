@@ -32,7 +32,7 @@ public:
     CHIP_ERROR Serialize();
     CHIP_ERROR Deserialize();
     CHIP_ERROR StoreData(const char *key, uint16_t value = 0);
-    CHIP_ERROR RetrieveData(ByteSpan *payload);
+    CHIP_ERROR RetrieveData(ByteSpan payload);
     bool IsEmptyBuffer();
 
 private:

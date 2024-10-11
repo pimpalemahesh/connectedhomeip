@@ -95,12 +95,12 @@ void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event) {
     {
     case ValueType::kInt32:
         ESP_LOGI("mtr", "The value of %s is %ld ", event.key(), event.ValueInt32());
-        // error = diagnosticStorage.StoreData(event.ValueInt32(), (char *) event.key());
+        error = diagnosticStorage.StoreData(static_cast<const char *>(event.key()), static_cast<uint16_t>(event.ValueInt32()));
         break;
 
     case ValueType::kUInt32:
         ESP_LOGI("mtr", "The value of %s is %lu ", event.key(), event.ValueUInt32());
-        // error = diagnosticStorage.StoreData(event.ValueUInt32(), (char *) event.key());
+        error = diagnosticStorage.StoreData(static_cast<const char *>(event.key()), static_cast<uint16_t>(event.ValueUInt32()));
         break;
 
     case ValueType::kChipErrorCode:
@@ -133,55 +133,9 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
     DiagnosticStorage & diagnosticStorage = DiagnosticStorage::GetInstance();
     if (IsPermitted(hashValue))
     {
-        // diagnosticStorage.StoreData(label, value);
+        diagnosticStorage.StoreData(label, value);
         diagnosticStorage.StoreData(group, value);
         value++;
-        // if (label != nullptr)
-        // {
-        //     error = diagnosticStorage.StoreData(
-        //         reinterpret_cast<const uint8_t*>(label),
-        //         strlen(label) + 1
-        //     );
-        //     if (error != CHIP_NO_ERROR) {
-        //         ChipLogError(DeviceLayer, "Failed to store label data");
-        //     }
-
-        //     if (diagnosticStorage.IsEmptyBuffer())
-        //     {
-        //         ChipLogError(DeviceLayer, "Buffer cannot be empty!");
-        //     }
-        // }
-
-        // if (group != nullptr)
-        // {
-        //     error = diagnosticStorage.StoreData(
-        //         reinterpret_cast<const uint8_t*>(group),
-        //         strlen(group) + 1
-        //     );
-        //     if (error != CHIP_NO_ERROR) {
-        //         ChipLogError(DeviceLayer, "Failed to store label data");
-        //     }
-
-        //     if (diagnosticStorage.IsEmptyBuffer())
-        //     {
-        //         ChipLogError(DeviceLayer, "Buffer cannot be empty!");
-        //     }
-        // }
-
-        // const char newline = '\n';
-        // error = diagnosticStorage.StoreData(
-        //     reinterpret_cast<const uint8_t *>(&newline),
-        //     1
-        // );
-        // if (error != CHIP_NO_ERROR)
-        // {
-        //     ChipLogError(DeviceLayer, "Failed to store newline data");
-        // }
-
-        // if (diagnosticStorage.IsEmptyBuffer())
-        // {
-        //     ChipLogError(DeviceLayer, "Buffer cannot be empty!");
-        // }
     }
 
 }

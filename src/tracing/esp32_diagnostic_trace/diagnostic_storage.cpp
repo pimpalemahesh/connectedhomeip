@@ -3,11 +3,12 @@
 namespace chip {
 namespace Tracing {
 
-DiagnosticStorage::DiagnosticStorage() : mCircularBuffer(mBuffer, TRACE_BUFFER_SIZE) {}
+DiagnosticStorage::DiagnosticStorage() : mEndUserCircularBuffer(mEndUserBuffer, END_USER_BUFFER_SIZE),
+                                         mNetworkCircularBuffer(mNetworkBuffer, NETWORK_BUFFER_SIZE) {}
 
 DiagnosticStorage::~DiagnosticStorage() {}
 
-CHIP_ERROR DiagnosticStorage::Serialize()
+CHIP_ERROR DiagnosticStorage::EncodeData()
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     printf("%s\n", __func__);
@@ -15,19 +16,19 @@ CHIP_ERROR DiagnosticStorage::Serialize()
 }
 
 // Deserialize Method
-CHIP_ERROR DiagnosticStorage::Deserialize()
+CHIP_ERROR DiagnosticStorage::DecodeData()
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     printf("%s\n", __func__);
     return err;
 }
 
-CHIP_ERROR DiagnosticStorage::StoreData(const char* key, uint16_t value)
+CHIP_ERROR DiagnosticStorage::StoreData(const char* key, int16_t value)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
     CircularTLVWriter writer;
-    writer.Init(mCircularBuffer);
+    writer.Init(mEndUserCircularBuffer);
 
     // Start a TLV structure container (Anonymous)
     chip::TLV::TLVType outerContainer;
@@ -44,7 +45,7 @@ CHIP_ERROR DiagnosticStorage::StoreData(const char* key, uint16_t value)
         return err;
     }
 
-    // Write the uint16_t value with a context tag
+    // Write the int16_t value with a context tag
     err = writer.Put(ContextTag(2), value);
     if (err != CHIP_NO_ERROR) {
         ChipLogError(DeviceLayer, "Failed to write value to TLV");
@@ -74,7 +75,7 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan payload)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     CircularTLVReader reader;
-    reader.Init(mCircularBuffer);
+    reader.Init(mEndUserCircularBuffer);
 
     size_t dataSize = 0;
     size_t maxSize = payload.size();
@@ -140,7 +141,7 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan payload)
                 return err;
             }
 
-            uint32_t value;
+            int16_t value;
             if (reader.GetTag() == chip::TLV::ContextTag(2)) {
                 err = reader.Get(value);
                 if (err != CHIP_NO_ERROR) {
@@ -181,9 +182,9 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan payload)
 
             buffer[dataSize++] = '\n';
 
-            printf("--------------- Key: %s, Value: %lu into payload---------------\n", key, value);
+            printf("--------------- Key: %s, Value: %d into payload---------------\n", key, value);
             chip::Platform::MemoryFree(key);
-            mCircularBuffer.EvictHead();
+            mEndUserCircularBuffer.EvictHead();
         }
         else {
             ChipLogError(DeviceLayer, "Unexpected TLV type or tag: Type, Tag");
@@ -201,7 +202,7 @@ CHIP_ERROR DiagnosticStorage::RetrieveData(ByteSpan payload)
 
 bool DiagnosticStorage::IsEmptyBuffer()
 {
-    return false;
+    return !(mEndUserCircularBuffer.DataLength() > 0);
 }
 
 

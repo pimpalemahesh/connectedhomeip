@@ -1,16 +1,14 @@
 #include <lib/core/CHIPError.h>
 #include <tracing/backend.h>
 #include <tracing/metric_event.h>
-#include <tracing/esp32_diagnostic_trace/diagnostic_storage.h>
+#include <tracing/esp32_diagnostic_trace/in_memory_diagnostic_storage.h>
+#include <esp_log.h>
 
 
 #include <memory>
 namespace chip {
 namespace Tracing {
 namespace Insights {
-
-extern DiagnosticStorage gDiagnosticStorage;
-
 /// A Backend that outputs data to chip logging.
 ///
 /// Structured data is formatted as json strings.

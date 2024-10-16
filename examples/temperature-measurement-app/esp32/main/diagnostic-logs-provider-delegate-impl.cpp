@@ -104,10 +104,10 @@ size_t LogProvider::GetCrashSize()
 CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentEnum intent)
 {
     context->intent = intent;
-    DiagnosticStorage & diagnosticStorage = DiagnosticStorage::GetInstance();
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
 
-    uint8_t retrieveBuffer[2048];
-    ByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
+    uint8_t retrieveBuffer[512];
+    MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
 
     switch (intent)
     {
@@ -119,7 +119,7 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
                 return CHIP_ERROR_NOT_FOUND;
             }
             // Retrieve data from the diagnostic storage
-            CHIP_ERROR err = diagnosticStorage.RetrieveData(endUserSupportSpan);
+            CHIP_ERROR err = diagnosticStorage.Retrieve(endUserSupportSpan);
             if (err != CHIP_NO_ERROR)
             {
                 ChipLogError(DeviceLayer, "Failed to retrieve data: %s", chip::ErrorStr(err));

@@ -21,9 +21,9 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CHIPMemString.h>
 #include <string.h>
-#include "diagnostic_storage.h"
+#include "in_memory_diagnostic_storage.h"
 
-using chip::Tracing::DiagnosticStorage;
+using chip::Tracing::InMemoryDiagnosticStorage;
 
 namespace Insights {
 

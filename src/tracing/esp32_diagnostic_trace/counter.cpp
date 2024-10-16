@@ -58,8 +58,8 @@ int32_t ESPDiagnosticCounter::GetInstanceCount() const
 
 void ESPDiagnosticCounter::ReportMetrics()
 {
-    DiagnosticStorage & diagnosticStorage = DiagnosticStorage::GetInstance();
-    diagnosticStorage.StoreData(label, instanceCount);
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    // diagnosticStorage.Store(label, instanceCount);
 }
 
 } // namespace Insights

@@ -29,8 +29,9 @@ static_library("backend") {
     "counter.h",
     "diagnostic_tracing.cpp",
     "diagnostic_tracing.h",
-    "diagnostic_storage.cpp",
-    "diagnostic_storage.h",
+    "in_memory_diagnostic_storage.cpp",
+    "in_memory_diagnostic_storage.h",
+    "diagnostics.h",
   ]
 
   public_deps = [

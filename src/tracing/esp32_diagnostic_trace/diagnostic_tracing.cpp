@@ -86,21 +86,22 @@ void ESP32Diagnostics::LogNodeDiscovered(NodeDiscoveredInfo & info) {}
 void ESP32Diagnostics::LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo & info) {}
 
 void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event) {
-    DiagnosticStorage & diagnosticStorage = DiagnosticStorage::GetInstance();
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
     CHIP_ERROR error = CHIP_NO_ERROR;
 
     printf("LOG MATRIC EVENT CALLED\n");
 
-    switch (event.ValueType())
-    {
+    Metric<int32_t> metric; // Declare metric before the switch statement
+
+    switch (event.ValueType()) {
     case ValueType::kInt32:
         ESP_LOGI("mtr", "The value of %s is %ld ", event.key(), event.ValueInt32());
-        error = diagnosticStorage.StoreData(static_cast<const char *>(event.key()), static_cast<uint16_t>(event.ValueInt32()));
+        metric = Metric<int32_t>(event.key(), event.ValueInt32(), esp_log_timestamp());
+        error = diagnosticStorage.Store(metric);
         break;
 
     case ValueType::kUInt32:
         ESP_LOGI("mtr", "The value of %s is %lu ", event.key(), event.ValueUInt32());
-        error = diagnosticStorage.StoreData(static_cast<const char *>(event.key()), static_cast<uint16_t>(event.ValueUInt32()));
         break;
 
     case ValueType::kChipErrorCode:
@@ -130,11 +131,11 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
     CHIP_ERROR error;
     HashValue hashValue = MurmurHash(group);
-    DiagnosticStorage & diagnosticStorage = DiagnosticStorage::GetInstance();
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
     if (IsPermitted(hashValue))
     {
-        diagnosticStorage.StoreData(label, value);
-        diagnosticStorage.StoreData(group, value);
+        Trace trace(label, esp_log_timestamp());
+        diagnosticStorage.Store(trace);
         value++;
     }
 

@@ -51,7 +51,7 @@ private:
 
 class Counter : public Diagnostics {
 public:
-    Counter(const char* label, uint32_t count, uint32_t timestamp)
+    Counter(const char* label, int32_t count, uint32_t timestamp)
         : label_(label), count_(count), timestamp_(timestamp) {}
 
     Counter() {}
@@ -60,13 +60,13 @@ public:
 
     const char* GetLabel() const { return label_; }
 
-    uint32_t GetCount() const { return count_; }
+    int32_t GetCount() const { return count_; }
 
     uint32_t GetTimestamp() const { return timestamp_; }
 
 private:
     const char* label_;
-    uint32_t count_;
+    int32_t count_;
     uint32_t timestamp_;
 };
 

@@ -51,6 +51,13 @@ private:
     TLVCircularBuffer mNetworkCircularBuffer;
     uint8_t mEndUserBuffer[END_USER_BUFFER_SIZE];
     uint8_t mNetworkBuffer[NETWORK_BUFFER_SIZE];
+
+    CHIP_ERROR StoreDiagnosticData(CircularTLVWriter & writer, Diagnostics & diagnostic);
+    CHIP_ERROR StoreMetric(CircularTLVWriter & writer, const Metric<int32_t> * metric);
+    CHIP_ERROR StoreTrace(CircularTLVWriter & writer, const Trace * trace);
+    CHIP_ERROR StoreCounter(CircularTLVWriter & writer, const Counter * counter);
+    CHIP_ERROR ReadAndCopyData(CircularTLVReader & reader, chip::TLV::TLVWriter & writer);
+    void LogBufferStats();
 };
 
 } // namespace Tracing

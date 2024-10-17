@@ -20,6 +20,7 @@ enum TAG
     TRACE      = 1,
     LABEL      = 2,
     VALUE      = 3,
+    COUNTER    = 4,
     TIMESTAMP  = 5
 };
 
@@ -38,7 +39,7 @@ public:
 
     CHIP_ERROR Store(Diagnostics & diagnostic) override;
 
-    CHIP_ERROR Retrieve(MutableByteSpan payload) override;
+    CHIP_ERROR Retrieve(MutableByteSpan &payload) override;
 
     bool IsEmptyBuffer();
 

@@ -49,13 +49,34 @@ private:
     uint32_t timestamp_;
 };
 
+class Counter : public Diagnostics {
+public:
+    Counter(const char* label, uint32_t count, uint32_t timestamp)
+        : label_(label), count_(count), timestamp_(timestamp) {}
+
+    Counter() {}
+
+    const char* GetType() const override { return "COUNTER"; }
+
+    const char* GetLabel() const { return label_; }
+
+    uint32_t GetCount() const { return count_; }
+
+    uint32_t GetTimestamp() const { return timestamp_; }
+
+private:
+    const char* label_;
+    uint32_t count_;
+    uint32_t timestamp_;
+};
+
 class IDiagnosticStorage {
 public:
     virtual ~IDiagnosticStorage() = default;
 
     virtual CHIP_ERROR Store(Diagnostics& diagnostic) = 0;
 
-    virtual CHIP_ERROR Retrieve(MutableByteSpan payload) = 0;
+    virtual CHIP_ERROR Retrieve(MutableByteSpan &payload) = 0;
 };
 
 } // namespace Tracing

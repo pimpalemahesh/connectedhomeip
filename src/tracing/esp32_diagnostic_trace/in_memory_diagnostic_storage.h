@@ -20,6 +20,7 @@ enum TAG
     TRACE      = 1,
     LABEL      = 2,
     VALUE      = 3,
+    COUNTER    = 4,
     TIMESTAMP  = 5
 };
 

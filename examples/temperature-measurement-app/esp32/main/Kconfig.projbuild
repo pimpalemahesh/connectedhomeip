@@ -83,3 +83,9 @@ depends on ENABLE_PW_RPC
             about available pin numbers for UART.
 
 endmenu
+
+menu "Platform Diagnostics"
+    config ESP_DIAGNOSTICS_ENABLED
+        bool "Enable ESP Insights"
+        default n
+endmenu

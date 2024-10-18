@@ -106,7 +106,7 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
     context->intent = intent;
     InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
 
-    uint8_t retrieveBuffer[512];
+    uint8_t retrieveBuffer[256];
     MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
 
     switch (intent)

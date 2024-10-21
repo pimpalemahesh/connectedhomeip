@@ -86,7 +86,7 @@ public:
     CHIP_ERROR Store(Diagnostics & diagnostic) override;
 
     // Override retrieve method from IDiagnosticStorage interface
-    CHIP_ERROR Retrieve(MutableByteSpan payload) override;
+    CHIP_ERROR Retrieve(MutableByteSpan &payload) override;
 
     /**
      * @brief Check if the in-memory diagnostic buffer is empty.

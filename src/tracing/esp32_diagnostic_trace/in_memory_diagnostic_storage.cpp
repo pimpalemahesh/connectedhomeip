@@ -166,7 +166,7 @@ void InMemoryDiagnosticStorage::LogBufferStats()
     
 }
 
-CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan payload)
+CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan &payload)
 {
     printf("***************************************************************************RETRIEVAL STARTED**********************************************************\n");
     CircularTLVReader reader;
@@ -200,6 +200,10 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan payload)
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to end TLV container"));
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
+
+    size_t totalLengthWritten = writer.GetLengthWritten();
+    payload.reduce_size(totalLengthWritten);
+    printf("Total Length of data copied to payload: %zd bytes.\n", totalLengthWritten);
 
     LogBufferStats();
     ChipLogProgress(DeviceLayer, "Retrieval successful");

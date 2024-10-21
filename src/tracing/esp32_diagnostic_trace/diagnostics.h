@@ -110,7 +110,7 @@ public:
      * 
      * @return CHIP_NO_ERROR on success, or an appropriate error code on failure.
      */
-    virtual CHIP_ERROR Retrieve(MutableByteSpan payload) = 0;
+    virtual CHIP_ERROR Retrieve(MutableByteSpan &payload) = 0;
 };
 
 } // namespace Tracing

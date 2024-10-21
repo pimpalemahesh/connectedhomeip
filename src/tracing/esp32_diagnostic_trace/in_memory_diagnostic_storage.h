@@ -42,6 +42,13 @@ enum TAG
     TIMESTAMP  = 5
 };
 
+enum class DiagnosticType
+{
+    kEndUser = 0,
+    kNetwork = 1,
+    kUndefined = 2
+};
+
 /**
  * @brief
  *   InMemory implementation of the IDiagnosticStorage interface.
@@ -54,18 +61,31 @@ class InMemoryDiagnosticStorage : public IDiagnosticStorage
 public:
 
     // Singletone instance
-    static InMemoryDiagnosticStorage& GetInstance()
+    static InMemoryDiagnosticStorage& GetInstance(DiagnosticType diagnosticType)
     {
-        static InMemoryDiagnosticStorage instance;
-        return instance;
+        if (diagnosticType == DiagnosticType::kEndUser) {
+            static InMemoryDiagnosticStorage endUserInstance(DiagnosticType::kEndUser);
+            return endUserInstance;
+        }
+        else if (diagnosticType == DiagnosticType::kNetwork) {
+            static InMemoryDiagnosticStorage networkInstance(DiagnosticType::kNetwork);
+            return networkInstance;
+        }
+        else {
+            static InMemoryDiagnosticStorage undefinedInstance(DiagnosticType::kUndefined);
+            return undefinedInstance;
+        }
     }
+
 
     // Deleted copy constructor and assignment operator to prevent copying
     InMemoryDiagnosticStorage(const InMemoryDiagnosticStorage &) = delete;
     InMemoryDiagnosticStorage & operator=(const InMemoryDiagnosticStorage &) = delete;
 
+    // Override store method from IDiagnosticStorage interface
     CHIP_ERROR Store(Diagnostics & diagnostic) override;
 
+    // Override retrieve method from IDiagnosticStorage interface
     CHIP_ERROR Retrieve(MutableByteSpan payload) override;
 
     /**
@@ -77,9 +97,13 @@ public:
      */
     bool IsEmptyBuffer();
 
+    TLVCircularBuffer getInMemoryBuffer();
+
 private:
-    InMemoryDiagnosticStorage();
+    InMemoryDiagnosticStorage(DiagnosticType diagnosticType);
     ~InMemoryDiagnosticStorage();
+
+    DiagnosticType mDiagnosticType = DiagnosticType::kUndefined;
 
     // TLVCircularBuffer instance to store end user diagnostic data
     TLVCircularBuffer mEndUserCircularBuffer;
@@ -95,13 +119,18 @@ private:
 
     CHIP_ERROR StoreDiagnosticData(CircularTLVWriter & writer, Diagnostics & diagnostic);
 
+    // Method for storing metric diagnostics
     CHIP_ERROR StoreMetric(CircularTLVWriter & writer, const Metric<int32_t> * metric);
 
+    // Method for storing trace diagnostics
     CHIP_ERROR StoreTrace(CircularTLVWriter & writer, const Trace * trace);
 
+    // Method for storing counter diagnostics
     CHIP_ERROR StoreCounter(CircularTLVWriter & writer, const Counter * counter);
 
+    // Method for reading data from the buffer and write it to the payload
     CHIP_ERROR ReadAndCopyData(CircularTLVReader & reader, chip::TLV::TLVWriter & writer);
+
     void LogBufferStats();
 };
 

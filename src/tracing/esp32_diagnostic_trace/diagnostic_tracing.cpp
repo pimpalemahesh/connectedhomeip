@@ -104,7 +104,7 @@ void ESP32Diagnostics::LogNodeDiscovered(NodeDiscoveredInfo & info) {}
 void ESP32Diagnostics::LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo & info) {}
 
 void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event) {
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance(DiagnosticType::kEndUser);
     CHIP_ERROR err = CHIP_NO_ERROR;
 
     printf("LOG MATRIC EVENT CALLED\n");
@@ -147,13 +147,13 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     HashValue hashValue = MurmurHash(group);
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
-    if (IsPermitted(hashValue))
-    {
-        Trace trace(label, esp_log_timestamp());
-        err = diagnosticStorage.Store(trace);
-        VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store trace diagnostic."));
-    }
+    // InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance(DiagnosticType::kNetwork);
+    // if (IsPermitted(hashValue))
+    // {
+    //     Trace trace(label, esp_log_timestamp());
+    //     err = diagnosticStorage.Store(trace);
+    //     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store trace diagnostic."));
+    // }
 
 }
 

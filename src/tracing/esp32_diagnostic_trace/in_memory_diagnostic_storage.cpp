@@ -25,9 +25,11 @@
 namespace chip {
 namespace Tracing {
 
-InMemoryDiagnosticStorage::InMemoryDiagnosticStorage() :
-    mEndUserCircularBuffer(mEndUserBuffer, END_USER_BUFFER_SIZE), mNetworkCircularBuffer(mNetworkBuffer, NETWORK_BUFFER_SIZE)
-{}
+InMemoryDiagnosticStorage::InMemoryDiagnosticStorage(DiagnosticType diagnosticType) :
+    mDiagnosticType(diagnosticType), mEndUserCircularBuffer(mEndUserBuffer, END_USER_BUFFER_SIZE), mNetworkCircularBuffer(mNetworkBuffer, NETWORK_BUFFER_SIZE)
+{
+    mDiagnosticType = diagnosticType;
+}
 
 InMemoryDiagnosticStorage::~InMemoryDiagnosticStorage() {}
 
@@ -35,7 +37,16 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     CircularTLVWriter writer;
-    writer.Init(mEndUserCircularBuffer);
+    if (mDiagnosticType == DiagnosticType::kEndUser) {
+        writer.Init(mEndUserCircularBuffer);
+        printf("------------------------Writing to End User Buffer------------------------\n");
+    } else if (mDiagnosticType == DiagnosticType::kNetwork) {
+        writer.Init(mNetworkCircularBuffer);
+        printf("------------------------Writing to Network Buffer------------------------\n");
+    } else {
+        ChipLogError(DeviceLayer, "Got Undefined Diagnostic Type");
+        return CHIP_ERROR_BAD_REQUEST;
+    }
 
     // Start outer container
     chip::TLV::TLVType outerContainer;
@@ -130,22 +141,47 @@ CHIP_ERROR InMemoryDiagnosticStorage::StoreCounter(CircularTLVWriter & writer, c
     err = writer.Put(ContextTag(TAG::TIMESTAMP), counter->GetTimestamp());
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to write TIMESTAMP: %s", chip::ErrorStr(err)));
 
-    printf("Counter Value written to storage successfully: label : %s value : %ld timestamp : %lu\n", counter->GetLabel(), counter->GetCount(), counter->GetTimestamp());
-    return writer.EndContainer(counterContainer);
+    err = writer.EndContainer(counterContainer);
+    if (err == CHIP_NO_ERROR) {
+        printf("Counter Value written to storage successfully: label : %s value : %ld timestamp : %lu\n", counter->GetLabel(), counter->GetCount(), counter->GetTimestamp());
+    }
+    return err;
 }
 
 void InMemoryDiagnosticStorage::LogBufferStats()
 {
+    if (mDiagnosticType == DiagnosticType::kEndUser) {
     printf("Total Data Length in Buffer: %lu\n Total available length in buffer: %lu\n Total buffer length: %lu\n",
-           mEndUserCircularBuffer.DataLength(), mEndUserCircularBuffer.AvailableDataLength(),
-           mEndUserCircularBuffer.GetTotalDataLength());
+            mEndUserCircularBuffer.DataLength(), mEndUserCircularBuffer.AvailableDataLength(),
+            mEndUserCircularBuffer.GetTotalDataLength());
+    }
+    else if (mDiagnosticType == DiagnosticType::kNetwork) {
+        printf("Total Data Length in Buffer: %lu\n Total available length in buffer: %lu\n Total buffer length: %lu\n",
+           mNetworkCircularBuffer.DataLength(), mNetworkCircularBuffer.AvailableDataLength(),
+           mNetworkCircularBuffer.GetTotalDataLength());
+    }
+    else {
+        printf("Undefined buffer type\n");
+    }
+    
 }
 
 CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan payload)
 {
     printf("***************************************************************************RETRIEVAL STARTED**********************************************************\n");
     CircularTLVReader reader;
-    reader.Init(mEndUserCircularBuffer);
+    if (mDiagnosticType == DiagnosticType::kEndUser) {
+        reader.Init(mEndUserCircularBuffer);
+        printf("------------------------Reading from End User Buffer------------------------\n");
+    }
+    else if (mDiagnosticType == DiagnosticType::kNetwork) {
+        reader.Init(mNetworkCircularBuffer);
+        printf("------------------------Reading from network Buffer------------------------\n");
+    }
+    else {
+        ChipLogError(DeviceLayer, "Got Undefined Diagnostic Type");
+        return CHIP_ERROR_BAD_REQUEST;
+    }
 
     chip::TLV::TLVWriter writer;
     writer.Init(payload);
@@ -235,8 +271,16 @@ CHIP_ERROR InMemoryDiagnosticStorage::ReadAndCopyData(CircularTLVReader & reader
 
 bool InMemoryDiagnosticStorage::IsEmptyBuffer()
 {
-    return mEndUserCircularBuffer.DataLength() == 0;
+    if (mDiagnosticType == DiagnosticType::kEndUser) {
+        return mEndUserCircularBuffer.DataLength() == 0;
+    }
+    else if (mDiagnosticType == DiagnosticType::kNetwork) {
+        return mNetworkCircularBuffer.DataLength() == 0;
+    }
+    else {
+        ChipLogError(DeviceLayer, "Got Undefined Diagnostic Type");
+        return true;
+    }
 }
-
 } // namespace Tracing
 } // namespace chip

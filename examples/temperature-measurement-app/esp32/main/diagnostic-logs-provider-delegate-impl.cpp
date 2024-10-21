@@ -104,22 +104,21 @@ size_t LogProvider::GetCrashSize()
 CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentEnum intent)
 {
     context->intent = intent;
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
 
     uint8_t retrieveBuffer[256];
-    MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
+    MutableByteSpan payload(retrieveBuffer, sizeof(retrieveBuffer));
 
     switch (intent)
     {
         case IntentEnum::kEndUserSupport:
         {
+            InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance(chip::Tracing::DiagnosticType::kEndUser);
             if (diagnosticStorage.IsEmptyBuffer()) {
-                printf("Buffer is empty\n");
-                ChipLogError(DeviceLayer, "Empty Diagnostic buffer");
+                ChipLogError(DeviceLayer, "Empty End User Diagnostic buffer");
                 return CHIP_ERROR_NOT_FOUND;
             }
             // Retrieve data from the diagnostic storage
-            CHIP_ERROR err = diagnosticStorage.Retrieve(endUserSupportSpan);
+            CHIP_ERROR err = diagnosticStorage.Retrieve(payload);
             if (err != CHIP_NO_ERROR)
             {
                 ChipLogError(DeviceLayer, "Failed to retrieve data: %s", chip::ErrorStr(err));
@@ -127,12 +126,25 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
             }
 
             // Now, assign the span to the EndUserSupport object or whatever is required
-            context->EndUserSupport.span = endUserSupportSpan;
+            context->EndUserSupport.span = payload;
         }
         break;
         case IntentEnum::kNetworkDiag: {
-            context->NetworkDiag.span =
-                ByteSpan(&networkDiagnosticLogStart[0], static_cast<size_t>(networkDiagnosticLogEnd - networkDiagnosticLogStart));
+            InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance(chip::Tracing::DiagnosticType::kNetwork);
+            if (diagnosticStorage.IsEmptyBuffer()) {
+                ChipLogError(DeviceLayer, "Empty Network Diagnostic buffer");
+                return CHIP_ERROR_NOT_FOUND;
+            }
+            // Retrieve data from the diagnostic storage
+            CHIP_ERROR err = diagnosticStorage.Retrieve(payload);
+            if (err != CHIP_NO_ERROR)
+            {
+                ChipLogError(DeviceLayer, "Failed to retrieve data: %s", chip::ErrorStr(err));
+                return err;
+            }
+
+            // Now, assign the span to the EndUserSupport object or whatever is required
+            context->NetworkDiag.span = payload;
         }
         break;
 

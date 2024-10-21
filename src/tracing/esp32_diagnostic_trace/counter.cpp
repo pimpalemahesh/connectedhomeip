@@ -60,7 +60,7 @@ void ESPDiagnosticCounter::ReportMetrics()
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     chip::Tracing::Counter counter(label, instanceCount, esp_log_timestamp());
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance(chip::Tracing::DiagnosticType::kNetwork);
     err = diagnosticStorage.Store(counter);
     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store counter diagnostic"));
 }

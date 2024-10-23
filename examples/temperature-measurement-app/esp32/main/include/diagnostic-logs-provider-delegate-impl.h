@@ -26,7 +26,11 @@
 #include <esp_core_dump.h>
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
-using chip::Tracing::InMemoryDiagnosticStorage;
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+#define RETRIEVAL_BUFFER_SIZE CONFIG_DIAGNOSTIC_RETRIEVAL_BUFFER_SIZE
+using namespace chip::Tracing;
+#endif
+
 namespace chip {
 namespace app {
 namespace Clusters {

@@ -21,7 +21,7 @@ config("tracing") {
 }
 
 static_library("backend") {
-  output_name = "libEsp32TracingBackend"
+  output_name = "libEsp32DiagnosticsBackend"
   output_dir = "${root_out_dir}/lib"
 
   sources = [

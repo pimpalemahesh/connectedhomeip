@@ -26,101 +26,10 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
     VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                         ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
 
-    // Serialize based on diagnostic type
-    if (strcmp(diagnostic.GetType(), "METRIC") == 0)
+    err = diagnostic.Encode(writer);
+    if (err != CHIP_NO_ERROR)
     {
-        chip::TLV::TLVType metricContainer;
-        const Metric<int32_t> * metric = static_cast<const Metric<int32_t> *>(&diagnostic);
-        err = writer.StartContainer(ContextTag(TAG::METRIC), chip::TLV::TLVType::kTLVType_Structure, metricContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
-
-        // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), metric->GetLabel());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write LABEL for METRIC : %s", chip::ErrorStr(err)));
-
-        // VALUE
-        err = writer.Put(ContextTag(TAG::VALUE), metric->GetValue());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", chip::ErrorStr(err)));
-
-        // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), metric->GetTimestamp());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
-
-        printf("Metric Value written to storage successfully : %s\n", metric->GetLabel());
-        // End the TLV structure container
-        err = writer.EndContainer(metricContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", chip::ErrorStr(err)));
-    }
-    else if (strcmp(diagnostic.GetType(), "TRACE") == 0)
-    {
-        chip::TLV::TLVType traceContainer;
-        const Trace * trace = static_cast<const Trace *>(&diagnostic);
-
-        // Starting a TLV structure container for TRACE
-        err = writer.StartContainer(ContextTag(TAG::TRACE), chip::TLV::TLVType::kTLVType_Structure, traceContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", chip::ErrorStr(err)));
-
-        // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), trace->GetLabel());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
-
-        // GROUP
-        err = writer.PutString(ContextTag(TAG::GROUP), trace->GetGroup());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", chip::ErrorStr(err)));
-
-        // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), trace->GetTimestamp());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
-
-        printf("Trace Value written to storage successfully : %s\n", trace->GetLabel());
-        // End the TLV structure container
-        err = writer.EndContainer(traceContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for Trace : %s", chip::ErrorStr(err)));
-    }
-    else if (strcmp(diagnostic.GetType(), "COUNTER") == 0)
-    {
-        chip::TLV::TLVType counterContainer;
-        const Counter * counter = static_cast<const Counter *>(&diagnostic);
-
-        // Starting a TLV structure container for COUNTER
-        err = writer.StartContainer(ContextTag(TAG::COUNTER), chip::TLV::TLVType::kTLVType_Structure, counterContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", chip::ErrorStr(err)));
-
-        // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), counter->GetLabel());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write LABEL for COUNTER : %s", chip::ErrorStr(err)));
-
-        // COUNT
-        err = writer.Put(ContextTag(TAG::COUNTER), counter->GetCount());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", chip::ErrorStr(err)));
-
-        // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), counter->GetTimestamp());
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
-
-        printf("Counter Value written to storage successfully : %s\n", counter->GetLabel());
-        // End the TLV structure container
-        err = writer.EndContainer(counterContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for counter : %s", chip::ErrorStr(err)));
-    }
-    else
-    {
-        ChipLogError(DeviceLayer, "Unknown diagnostic type: %s", diagnostic.GetType());
+        ChipLogError(DeviceLayer, "Failed to encode diagnostic data : %s", ErrorStr(err));
         err = CHIP_ERROR_INVALID_ARGUMENT;
         writer.EndContainer(outerContainer);
         writer.Finalize();

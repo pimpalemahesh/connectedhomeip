@@ -2,14 +2,28 @@
 
 #include <lib/core/CHIPError.h>
 #include <lib/support/Span.h>
+#include <lib/core/TLVCircularBuffer.h>
 
 namespace chip {
 namespace Tracing {
 
+using namespace chip::TLV;
+
+enum class TAG
+{
+    METRIC     = 0,
+    TRACE      = 1,
+    COUNTER    = 2,
+    LABEL      = 3,
+    GROUP      = 4,
+    VALUE      = 5,
+    TIMESTAMP  = 6
+};
+
 class Diagnostics {
 public:
     virtual ~Diagnostics() = default;
-    virtual const char* GetType() const = 0;
+    virtual CHIP_ERROR Encode(CircularTLVWriter &writer) = 0;
 };
 
 template<typename T>
@@ -20,11 +34,38 @@ public:
 
     Metric() {}
 
-    const char* GetType() const override { return "METRIC"; }
-
     const char* GetLabel() const { return label_; }
     T GetValue() const { return value_; }
     uint32_t GetTimestamp() const { return timestamp_; }
+
+    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+        CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType metricContainer;
+        err = writer.StartContainer(ContextTag(TAG::METRIC), chip::TLV::TLVType::kTLVType_Structure, metricContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
+
+        // LABEL
+        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write LABEL for METRIC : %s", chip::ErrorStr(err)));
+
+        // VALUE
+        err = writer.Put(ContextTag(TAG::VALUE), value_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", chip::ErrorStr(err)));
+
+        // TIMESTAMP
+        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
+
+        printf("Metric Value written to storage successfully : %s\n", label_);
+        err = writer.EndContainer(metricContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", chip::ErrorStr(err)));
+        return err;
+    }
 
 private:
     const char* label_;
@@ -39,11 +80,38 @@ public:
 
     Trace() {}
 
-    const char* GetType() const override { return "TRACE"; }
-
     const char* GetLabel() const { return label_; }
     uint32_t GetTimestamp() const { return timestamp_; }
     const char* GetGroup() const { return group_; }
+
+    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+        CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType traceContainer;
+        err = writer.StartContainer(ContextTag(TAG::TRACE), chip::TLV::TLVType::kTLVType_Structure, traceContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", chip::ErrorStr(err)));
+
+        // LABEL
+        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
+
+        // GROUP
+        err = writer.PutString(ContextTag(TAG::GROUP), group_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", chip::ErrorStr(err)));
+
+        // TIMESTAMP
+        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
+
+        printf("Trace Value written to storage successfully : %s\n", label_);
+        err = writer.EndContainer(traceContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end TLV container for Trace : %s", chip::ErrorStr(err)));
+        return err;
+    }
 
 private:
     const char* label_;
@@ -58,13 +126,38 @@ public:
 
     Counter() {}
 
-    const char* GetType() const override { return "COUNTER"; }
-
-    const char* GetLabel() const { return label_; }
-
     uint32_t GetCount() const { return count_; }
 
     uint32_t GetTimestamp() const { return timestamp_; }
+
+    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+        CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType counterContainer;
+        err = writer.StartContainer(ContextTag(TAG::COUNTER), chip::TLV::TLVType::kTLVType_Structure, counterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", chip::ErrorStr(err)));
+
+        // LABEL
+        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write LABEL for COUNTER : %s", chip::ErrorStr(err)));
+
+        // COUNT
+        err = writer.Put(ContextTag(TAG::COUNTER), count_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", chip::ErrorStr(err)));
+
+        // TIMESTAMP
+        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
+
+        printf("Counter Value written to storage successfully : %s\n", label_);
+        err = writer.EndContainer(counterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end TLV container for counter : %s", chip::ErrorStr(err)));
+        return err;
+    }
 
 private:
     const char* label_;

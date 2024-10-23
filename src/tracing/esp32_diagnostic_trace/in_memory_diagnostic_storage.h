@@ -1,7 +1,6 @@
 #pragma once
 
 #include "diagnostics.h"
-#include <lib/core/TLVCircularBuffer.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/core/CHIPError.h>
 
@@ -12,18 +11,6 @@
 namespace chip {
 namespace Tracing {
 using namespace chip::Platform;
-using namespace chip::TLV;
-
-enum class TAG
-{
-    METRIC     = 0,
-    TRACE      = 1,
-    COUNTER    = 2,
-    LABEL      = 3,
-    GROUP      = 4,
-    VALUE      = 5,
-    TIMESTAMP  = 6
-};
 
 class InMemoryDiagnosticStorage : public IDiagnosticStorage
 {

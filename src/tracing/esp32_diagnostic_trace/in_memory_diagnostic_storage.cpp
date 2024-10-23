@@ -22,7 +22,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
 
     // Start a TLV structure container (Anonymous)
     chip::TLV::TLVType outerContainer;
-    err = writer.StartContainer(AnonymousTag(), chip::TLV::kTLVType_Structure, outerContainer);
+    err = writer.StartContainer(AnonymousTag(), chip::TLV::TLVType::kTLVType_Structure, outerContainer);
     VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                         ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
 
@@ -31,7 +31,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
     {
         chip::TLV::TLVType metricContainer;
         const Metric<int32_t> * metric = static_cast<const Metric<int32_t> *>(&diagnostic);
-        err = writer.StartContainer(ContextTag(TAG::METRIC), chip::TLV::kTLVType_Structure, metricContainer);
+        err = writer.StartContainer(ContextTag(TAG::METRIC), chip::TLV::TLVType::kTLVType_Structure, metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
 
@@ -62,7 +62,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
         const Trace * trace = static_cast<const Trace *>(&diagnostic);
 
         // Starting a TLV structure container for TRACE
-        err = writer.StartContainer(ContextTag(TAG::TRACE), chip::TLV::kTLVType_Structure, traceContainer);
+        err = writer.StartContainer(ContextTag(TAG::TRACE), chip::TLV::TLVType::kTLVType_Structure, traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", chip::ErrorStr(err)));
 
@@ -88,7 +88,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
         const Counter * counter = static_cast<const Counter *>(&diagnostic);
 
         // Starting a TLV structure container for COUNTER
-        err = writer.StartContainer(ContextTag(TAG::COUNTER), chip::TLV::kTLVType_Structure, counterContainer);
+        err = writer.StartContainer(ContextTag(TAG::COUNTER), chip::TLV::TLVType::kTLVType_Structure, counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", chip::ErrorStr(err)));
 
@@ -117,7 +117,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
     {
         ChipLogError(DeviceLayer, "Unknown diagnostic type: %s", diagnostic.GetType());
         err = CHIP_ERROR_INVALID_ARGUMENT;
-        writer.EndContainer(outerContainer); // Ensure container is ended
+        writer.EndContainer(outerContainer);
         writer.Finalize();
         return err;
     }
@@ -125,7 +125,6 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
     VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                         ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", chip::ErrorStr(err)));
 
-    // Finalize the writing process
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
 
@@ -140,16 +139,16 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
     printf("***************************************************************************RETRIEVAL "
            "STARTED**********************************************************\n");
     CHIP_ERROR err = CHIP_NO_ERROR;
-    CircularTLVReader reader;
+    chip::TLV::TLVReader reader;
     reader.Init(mEndUserCircularBuffer);
 
     chip::TLV::TLVWriter writer;
     writer.Init(payload);
 
-    uint32_t totalBufferSize = mEndUserCircularBuffer.DataLength();
+    uint32_t totalBufferSize = 0;
 
     chip::TLV::TLVType outWriterContainer;
-    err = writer.StartContainer(AnonymousTag(), chip::TLV::kTLVType_List, outWriterContainer);
+    err = writer.StartContainer(AnonymousTag(), chip::TLV::TLVType::kTLVType_List, outWriterContainer);
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to start container"));
 
     while (true)
@@ -163,22 +162,12 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to read next TLV element: %s", chip::ErrorStr(err)));
 
-        // Check if the current element is a structure with an anonymous tag
-        if (reader.GetType() == chip::TLV::kTLVType_Structure && reader.GetTag() == chip::TLV::AnonymousTag())
+        if (reader.GetType() == chip::TLV::TLVType::kTLVType_Structure && reader.GetTag() == chip::TLV::AnonymousTag())
         {
             chip::TLV::TLVType outerReaderContainer;
             err = reader.EnterContainer(outerReaderContainer);
             VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                                 ChipLogError(DeviceLayer, "Failed to enter outer TLV container: %s", chip::ErrorStr(err)));
-            if (reader.GetLength() > writer.GetRemainingFreeLength())
-            {
-                err = writer.EndContainer(outWriterContainer);
-                err = writer.Finalize();
-                VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
-
-                payload.reduce_size(writer.GetLengthWritten());
-                return CHIP_NO_ERROR;
-            }
 
             err = reader.Next();
             VerifyOrReturnError(
@@ -189,15 +178,22 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
             if ((reader.GetType() == chip::TLV::kTLVType_Structure) &&
                 (reader.GetTag() == ContextTag(TAG::METRIC) || reader.GetTag() == ContextTag(TAG::TRACE)))
             {
-                err = writer.CopyElement(reader);
-                if (err == CHIP_ERROR_BUFFER_TOO_SMALL)
-                {
-                    ChipLogProgress(DeviceLayer, "Buffer too small to occupy current element");
+                ESP_LOGW("SIZE", "Total read till now: %ld Total write till now: %ld", reader.GetLengthRead(), writer.GetLengthWritten());
+
+                if ((reader.GetLengthRead() - writer.GetLengthWritten()) < writer.GetRemainingFreeLength()) {
+                    err = writer.CopyElement(reader);
+                    if (err == CHIP_ERROR_BUFFER_TOO_SMALL) {
+                        ChipLogProgress(DeviceLayer, "Buffer too small to occupy current element");
+                        break;
+                    }
+                    VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
+                    ChipLogProgress(DeviceLayer, "Read metric container successfully");
+                    mEndUserCircularBuffer.EvictHead();
+                }
+                else {
+                    ChipLogProgress(DeviceLayer, "Buffer too small to occupy current TLV");
                     break;
                 }
-                VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
-                printf("Read metric container successfully\n");
-                mEndUserCircularBuffer.EvictHead();
             }
             else
             {
@@ -209,11 +205,12 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
             err = reader.ExitContainer(outerReaderContainer);
             VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                                 ChipLogError(DeviceLayer, "Failed to exit outer TLV container: %s", chip::ErrorStr(err)));
+
+            
         }
         else
         {
             ChipLogError(DeviceLayer, "Unexpected TLV element type or tag in outer container");
-            // Optionally, you might want to skip or handle unexpected elements differently
         }
 
         printf("Total Data Length in Buffer: %lu\n Total available length in buffer: %lu\nTotal buffer length: %lu\n",
@@ -222,6 +219,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
     }
 
     err = writer.EndContainer(outWriterContainer);
+    VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to close outer container"));
     // Finalize the writing process
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));

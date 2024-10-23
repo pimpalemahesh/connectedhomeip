@@ -104,16 +104,20 @@ size_t LogProvider::GetCrashSize()
 CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentEnum intent)
 {
     context->intent = intent;
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
 
-    static uint8_t retrieveBuffer[1024];
-    MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
+    #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+        InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+
+        static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
+        MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
+    #endif
 
     switch (intent)
     {
-        case IntentEnum::kEndUserSupport:
-        {
-            if (diagnosticStorage.IsEmptyBuffer()) {
+    case IntentEnum::kEndUserSupport: {
+        #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+            if (diagnosticStorage.IsEmptyBuffer())
+            {
                 printf("Buffer is empty\n");
                 ChipLogError(DeviceLayer, "Empty Diagnostic buffer");
                 return CHIP_ERROR_NOT_FOUND;
@@ -128,13 +132,17 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
 
             // Now, assign the span to the EndUserSupport object or whatever is required
             context->EndUserSupport.span = endUserSupportSpan;
-        }
-        break;
-        case IntentEnum::kNetworkDiag: {
-            context->NetworkDiag.span =
-                ByteSpan(&networkDiagnosticLogStart[0], static_cast<size_t>(networkDiagnosticLogEnd - networkDiagnosticLogStart));
-        }
-        break;
+        #else
+            context->EndUserSupport.span =
+                ByteSpan(&endUserSupportLogStart[0], static_cast<size_t>(endUserSupportLogEnd - endUserSupportLogStart));
+        #endif
+    }
+    break;
+    case IntentEnum::kNetworkDiag: {
+        context->NetworkDiag.span =
+            ByteSpan(&networkDiagnosticLogStart[0], static_cast<size_t>(networkDiagnosticLogEnd - networkDiagnosticLogStart));
+    }
+    break;
 
     case IntentEnum::kCrashLogs: {
 #if defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)

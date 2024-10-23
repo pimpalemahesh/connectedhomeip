@@ -32,7 +32,6 @@
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 #include <diagnostic-logs-provider-delegate-impl.h>
 #include <platform/ESP32/ESP32Utils.h>
-#include <tracing/esp32_diagnostic_trace/diagnostic_tracing.h>
 
 #include <cmath>
 #include <cstdio>
@@ -52,6 +51,10 @@
 #else
 #include <DeviceInfoProviderImpl.h>
 #endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+#include <tracing/esp32_diagnostic_trace/diagnostic_tracing.h>
+#endif
 
 namespace {
 #if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
@@ -76,28 +79,10 @@ static AppDeviceCallbacks EchoCallbacks;
 static void InitServer(intptr_t context)
 {
     Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
-#if CONFIG_ENABLE_ESP_INSIGHTS_TRACE
-    // esp_insights_config_t config = {
-    //     .log_type = ESP_DIAG_LOG_TYPE_ERROR | ESP_DIAG_LOG_TYPE_WARNING | ESP_DIAG_LOG_TYPE_EVENT,
-    //     .auth_key = insights_auth_key_start,
-    // };
 
-    // esp_err_t ret = esp_insights_init(&config);
-
-    // if (ret != ESP_OK)
-    // {
-    //     ESP_LOGE(TAG, "Failed to initialize ESP Insights, err:0x%x", ret);
-    // }
-
-    // static Tracing::Insights::ESP32Backend backend;
-    // Tracing::Register(backend);
-
-    static Tracing::Insights::ESP32Diagnostics backend2;
-    Tracing::Register(backend2);
-
-#if CONFIG_ENABLE_ESP_INSIGHTS_SYSTEM_STATS
-    chip::System::Stats::InsightsSystemMetrics::GetInstance().RegisterAndEnable(chip::System::Clock::Timeout(START_TIMEOUT_MS));
-#endif
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    static Tracing::Insights::ESP32Diagnostics diagnosticBackend;
+    Tracing::Register(diagnosticBackend);
 #endif
 }
 

@@ -9,7 +9,7 @@ namespace Tracing {
 
 using namespace chip::TLV;
 
-enum class TAG
+enum class DIAGNOSTICS_TAG
 {
     METRIC     = 0,
     TRACE      = 1,
@@ -41,22 +41,22 @@ public:
     CHIP_ERROR Encode(CircularTLVWriter &writer) override {
         CHIP_ERROR err = CHIP_NO_ERROR;
         chip::TLV::TLVType metricContainer;
-        err = writer.StartContainer(ContextTag(TAG::METRIC), chip::TLV::TLVType::kTLVType_Structure, metricContainer);
+        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::METRIC), chip::TLV::TLVType::kTLVType_Structure, metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for METRIC : %s", chip::ErrorStr(err)));
 
         // VALUE
-        err = writer.Put(ContextTag(TAG::VALUE), value_);
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::VALUE), value_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", chip::ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
 
@@ -87,22 +87,22 @@ public:
     CHIP_ERROR Encode(CircularTLVWriter &writer) override {
         CHIP_ERROR err = CHIP_NO_ERROR;
         chip::TLV::TLVType traceContainer;
-        err = writer.StartContainer(ContextTag(TAG::TRACE), chip::TLV::TLVType::kTLVType_Structure, traceContainer);
+        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::TRACE), chip::TLV::TLVType::kTLVType_Structure, traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", chip::ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
 
         // GROUP
-        err = writer.PutString(ContextTag(TAG::GROUP), group_);
+        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::GROUP), group_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", chip::ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
 
@@ -133,22 +133,22 @@ public:
     CHIP_ERROR Encode(CircularTLVWriter &writer) override {
         CHIP_ERROR err = CHIP_NO_ERROR;
         chip::TLV::TLVType counterContainer;
-        err = writer.StartContainer(ContextTag(TAG::COUNTER), chip::TLV::TLVType::kTLVType_Structure, counterContainer);
+        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::COUNTER), chip::TLV::TLVType::kTLVType_Structure, counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", chip::ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(TAG::LABEL), label_);
+        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for COUNTER : %s", chip::ErrorStr(err)));
 
         // COUNT
-        err = writer.Put(ContextTag(TAG::COUNTER), count_);
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::COUNTER), count_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", chip::ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
 

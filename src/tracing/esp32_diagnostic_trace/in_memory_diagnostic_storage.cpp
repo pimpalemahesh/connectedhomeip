@@ -71,6 +71,11 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
 
+        // GROUP
+        err = writer.PutString(ContextTag(TAG::GROUP), trace->GetGroup());
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", chip::ErrorStr(err)));
+
         // TIMESTAMP
         err = writer.Put(ContextTag(TAG::TIMESTAMP), trace->GetTimestamp());
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,

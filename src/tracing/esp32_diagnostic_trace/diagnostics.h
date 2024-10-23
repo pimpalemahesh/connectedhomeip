@@ -34,8 +34,8 @@ private:
 
 class Trace : public Diagnostics {
 public:
-    Trace(const char* label, uint32_t timestamp)
-        : label_(label), timestamp_(timestamp) {}
+    Trace(const char* label, const char* group,  uint32_t timestamp)
+        : label_(label), group_(group), timestamp_(timestamp) {}
 
     Trace() {}
 
@@ -43,9 +43,11 @@ public:
 
     const char* GetLabel() const { return label_; }
     uint32_t GetTimestamp() const { return timestamp_; }
+    const char* GetGroup() const { return group_; }
 
 private:
     const char* label_;
+    const char* group_;
     uint32_t timestamp_;
 };
 

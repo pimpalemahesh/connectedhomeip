@@ -14,14 +14,15 @@ namespace Tracing {
 using namespace chip::Platform;
 using namespace chip::TLV;
 
-enum TAG
+enum class TAG
 {
     METRIC     = 0,
     TRACE      = 1,
-    LABEL      = 2,
-    VALUE      = 3,
-    COUNTER    = 4,
-    TIMESTAMP  = 5
+    COUNTER    = 2,
+    LABEL      = 3,
+    GROUP      = 4,
+    VALUE      = 5,
+    TIMESTAMP  = 6
 };
 
 class InMemoryDiagnosticStorage : public IDiagnosticStorage

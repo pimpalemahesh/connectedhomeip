@@ -134,7 +134,7 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
     InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
     if (IsPermitted(hashValue))
     {
-        Trace trace(label, esp_log_timestamp());
+        Trace trace(label, group, esp_log_timestamp());
         diagnosticStorage.Store(trace);
         value++;
     }

@@ -16,12 +16,14 @@
  *    limitations under the License.
  */
 
+#pragma once
+
 #include <esp_diagnostics_metrics.h>
 #include <esp_log.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CHIPMemString.h>
 #include <string.h>
-#include "in_memory_diagnostic_storage.h"
+#include "tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h"
 
 using namespace chip::Tracing;
 

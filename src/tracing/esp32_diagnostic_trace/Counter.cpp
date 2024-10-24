@@ -17,7 +17,7 @@
  */
 
 #include <string.h>
-#include <tracing/esp32_diagnostic_trace/counter.h>
+#include <tracing/esp32_diagnostic_trace/Counter.h>
 
 using namespace chip;
 
@@ -60,7 +60,7 @@ void ESPDiagnosticCounter::ReportMetrics()
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     Counter counter(label, instanceCount, esp_log_timestamp());
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
     err = diagnosticStorage.Store(counter);
     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Counter diagnostic data"));
 }

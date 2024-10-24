@@ -1,11 +1,30 @@
+
+/*
+ *
+ *    Copyright (c) 2024 Project CHIP Authors
+ *    All rights reserved.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
 #include <algorithm>
 #include <esp_err.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <memory>
 #include <tracing/backend.h>
-#include <tracing/esp32_diagnostic_trace/counter.h>
-#include <tracing/esp32_diagnostic_trace/diagnostic_tracing.h>
+#include <tracing/esp32_diagnostic_trace/Counter.h>
+#include <tracing/esp32_diagnostic_trace/DiagnosticTracing.h>
 #include <tracing/metric_event.h>
 
 namespace chip {
@@ -87,7 +106,7 @@ void ESP32Diagnostics::LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo & info) {}
 
 void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event)
 {
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
     CHIP_ERROR err = CHIP_NO_ERROR;
 
     printf("LOG MATRIC EVENT CALLED\n");
@@ -133,7 +152,7 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
     HashValue hashValue                           = MurmurHash(group);
-    InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+    DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
     if (IsPermitted(hashValue))
     {
         Trace trace(label, group, esp_log_timestamp());

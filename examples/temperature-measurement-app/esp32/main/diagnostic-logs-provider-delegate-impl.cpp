@@ -106,7 +106,7 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
     context->intent = intent;
 
     #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-        InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
+        DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
 
         static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
         MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));

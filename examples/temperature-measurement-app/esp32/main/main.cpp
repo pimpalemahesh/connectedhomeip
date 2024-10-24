@@ -53,7 +53,7 @@
 #endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-#include <tracing/esp32_diagnostic_trace/diagnostic_tracing.h>
+#include <tracing/esp32_diagnostic_trace/DiagnosticTracing.h>
 #endif
 
 namespace {

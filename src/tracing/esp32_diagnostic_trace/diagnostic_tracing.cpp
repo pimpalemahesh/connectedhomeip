@@ -85,24 +85,28 @@ void ESP32Diagnostics::LogNodeDiscovered(NodeDiscoveredInfo & info) {}
 
 void ESP32Diagnostics::LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo & info) {}
 
-void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event) {
+void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event)
+{
     InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
-    CHIP_ERROR error = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     printf("LOG MATRIC EVENT CALLED\n");
 
-    Metric<int32_t> metric; // Declare metric before the switch statement
-
-    switch (event.ValueType()) {
-    case ValueType::kInt32:
+    switch (event.ValueType())
+    {
+    case ValueType::kInt32: {
         ESP_LOGI("mtr", "The value of %s is %ld ", event.key(), event.ValueInt32());
-        metric = Metric<int32_t>(event.key(), event.ValueInt32(), esp_log_timestamp());
-        error = diagnosticStorage.Store(metric);
-        break;
+        Metric<int32_t> metric(event.key(), event.ValueInt32(), esp_log_timestamp());
+        err = diagnosticStorage.Store(metric);
+    }
+    break;
 
-    case ValueType::kUInt32:
+    case ValueType::kUInt32: {
         ESP_LOGI("mtr", "The value of %s is %lu ", event.key(), event.ValueUInt32());
-        break;
+        Metric<uint32_t> metric(event.key(), event.ValueUInt32(), esp_log_timestamp());
+        err = diagnosticStorage.Store(metric);
+    }
+    break;
 
     case ValueType::kChipErrorCode:
         ESP_LOGI("mtr", "The value of %s is error with code %lu ", event.key(), event.ValueErrorCode());
@@ -117,9 +121,7 @@ void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event) {
         break;
     }
 
-    if (error != CHIP_NO_ERROR) {
-        ChipLogError(DeviceLayer, "Failed to store trace matric data");
-    }
+    VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Metric Diagnostic data"));
 }
 
 void ESP32Diagnostics::TraceCounter(const char * label)
@@ -129,16 +131,15 @@ void ESP32Diagnostics::TraceCounter(const char * label)
 
 void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
-    CHIP_ERROR error;
-    HashValue hashValue = MurmurHash(group);
+    CHIP_ERROR err = CHIP_NO_ERROR;
+    HashValue hashValue                           = MurmurHash(group);
     InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
     if (IsPermitted(hashValue))
     {
         Trace trace(label, group, esp_log_timestamp());
-        diagnosticStorage.Store(trace);
-        value++;
+        err = diagnosticStorage.Store(trace);
+        VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Trace Diagnostic data"));
     }
-
 }
 
 void ESP32Diagnostics::TraceEnd(const char * label, const char * group) {}

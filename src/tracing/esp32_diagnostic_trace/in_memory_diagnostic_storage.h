@@ -4,9 +4,8 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/core/CHIPError.h>
 
-#define END_USER_BUFFER_SIZE 2048
-#define NETWORK_BUFFER_SIZE 1024
-#define RETRIEVE_DATA_CHUNK_NUMBER 10
+#define END_USER_BUFFER_SIZE CONFIG_END_USER_BUFFER_SIZE
+#define NETWORK_BUFFER_SIZE CONFIG_NETWORK_BUFFER_SIZE
 
 namespace chip {
 namespace Tracing {

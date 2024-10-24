@@ -90,7 +90,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
 
             // Check if the current element is a METRIC or TRACE container
             if ((reader.GetType() == chip::TLV::kTLVType_Structure) &&
-                (reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::METRIC) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::TRACE)))
+                (reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::METRIC) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::TRACE) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::COUNTER)))
             {
                 ESP_LOGW("SIZE", "Total read till now: %ld Total write till now: %ld", reader.GetLengthRead(), writer.GetLengthWritten());
 

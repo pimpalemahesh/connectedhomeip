@@ -1,5 +1,5 @@
 #
-#Copyright (c) 2023 Project CHIP Authors
+#Copyright (c) 2024 Project CHIP Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,13 +25,13 @@ static_library("backend") {
   output_dir = "${root_out_dir}/lib"
 
   sources = [
-    "counter.cpp",
-    "counter.h",
-    "diagnostic_tracing.cpp",
-    "diagnostic_tracing.h",
-    "in_memory_diagnostic_storage.cpp",
-    "in_memory_diagnostic_storage.h",
-    "diagnostics.h",
+    "Counter.cpp",
+    "Counter.h",
+    "DiagnosticTracing.cpp",
+    "DiagnosticTracing.h",
+    "DiagnosticStorageManager.cpp",
+    "DiagnosticStorageManager.h",
+    "Diagnostics.h",
   ]
 
   public_deps = [

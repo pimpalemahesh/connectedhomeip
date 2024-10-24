@@ -19,7 +19,11 @@
 #pragma once
 
 #include <app/clusters/diagnostic-logs-server/DiagnosticLogsProviderDelegate.h>
-#include <src/tracing/esp32_diagnostic_trace/in_memory_diagnostic_storage.h>
+
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+#include <src/tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h>
+#endif
+
 #include <map>
 
 #if defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)

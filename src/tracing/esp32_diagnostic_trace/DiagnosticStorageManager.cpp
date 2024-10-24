@@ -1,19 +1,37 @@
-#include "in_memory_diagnostic_storage.h"
-#include "diagnostics.h"
-#include <cstring> // For strcmp
+
+/*
+ *
+ *    Copyright (c) 2024 Project CHIP Authors
+ *    All rights reserved.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
 #include <esp_log.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/logging/CHIPLogging.h>
+#include <tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h>
+
 namespace chip {
 namespace Tracing {
 
-InMemoryDiagnosticStorage::InMemoryDiagnosticStorage() :
+DiagnosticStorageImpl::DiagnosticStorageImpl() :
     mEndUserCircularBuffer(mEndUserBuffer, END_USER_BUFFER_SIZE), mNetworkCircularBuffer(mNetworkBuffer, NETWORK_BUFFER_SIZE)
 {}
 
-InMemoryDiagnosticStorage::~InMemoryDiagnosticStorage() {}
+DiagnosticStorageImpl::~DiagnosticStorageImpl() {}
 
-CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
+CHIP_ERROR DiagnosticStorageImpl::Store(DiagnosticEntry & diagnostic)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
@@ -48,7 +66,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Store(Diagnostics & diagnostic)
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
+CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
 {
     printf("***************************************************************************RETRIEVAL "
            "STARTED**********************************************************\n");
@@ -143,7 +161,7 @@ CHIP_ERROR InMemoryDiagnosticStorage::Retrieve(MutableByteSpan & payload)
     return CHIP_NO_ERROR;
 }
 
-bool InMemoryDiagnosticStorage::IsEmptyBuffer()
+bool DiagnosticStorageImpl::IsEmptyBuffer()
 {
     return mEndUserCircularBuffer.DataLength() == 0;
 }

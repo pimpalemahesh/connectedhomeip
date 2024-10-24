@@ -1,3 +1,21 @@
+/*
+ *
+ *    Copyright (c) 2024 Project CHIP Authors
+ *    All rights reserved.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
 #pragma once
 
 #include <lib/core/CHIPError.h>
@@ -20,14 +38,14 @@ enum class DIAGNOSTICS_TAG
     TIMESTAMP  = 6
 };
 
-class Diagnostics {
+class DiagnosticEntry {
 public:
-    virtual ~Diagnostics() = default;
+    virtual ~DiagnosticEntry() = default;
     virtual CHIP_ERROR Encode(CircularTLVWriter &writer) = 0;
 };
 
 template<typename T>
-class Metric : public Diagnostics {
+class Metric : public DiagnosticEntry {
 public:
     Metric(const char* label, T value, uint32_t timestamp)
         : label_(label), value_(value), timestamp_(timestamp) {}
@@ -73,7 +91,7 @@ private:
     uint32_t timestamp_;
 };
 
-class Trace : public Diagnostics {
+class Trace : public DiagnosticEntry {
 public:
     Trace(const char* label, const char* group,  uint32_t timestamp)
         : label_(label), group_(group), timestamp_(timestamp) {}
@@ -119,7 +137,7 @@ private:
     uint32_t timestamp_;
 };
 
-class Counter : public Diagnostics {
+class Counter : public DiagnosticEntry {
 public:
     Counter(const char* label, uint32_t count, uint32_t timestamp)
         : label_(label), count_(count), timestamp_(timestamp) {}
@@ -165,11 +183,11 @@ private:
     uint32_t timestamp_;
 };
 
-class IDiagnosticStorage {
+class DiagnosticStorageInterface {
 public:
-    virtual ~IDiagnosticStorage() = default;
+    virtual ~DiagnosticStorageInterface() = default;
 
-    virtual CHIP_ERROR Store(Diagnostics& diagnostic) = 0;
+    virtual CHIP_ERROR Store(DiagnosticEntry& diagnostic) = 0;
 
     virtual CHIP_ERROR Retrieve(MutableByteSpan &payload) = 0;
 };

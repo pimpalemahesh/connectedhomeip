@@ -58,8 +58,11 @@ int32_t ESPDiagnosticCounter::GetInstanceCount() const
 
 void ESPDiagnosticCounter::ReportMetrics()
 {
+    CHIP_ERROR err = CHIP_NO_ERROR;
+    Counter counter(label, instanceCount, esp_log_timestamp());
     InMemoryDiagnosticStorage & diagnosticStorage = InMemoryDiagnosticStorage::GetInstance();
-    // diagnosticStorage.Store(label, instanceCount);
+    err = diagnosticStorage.Store(counter);
+    VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Counter diagnostic data"));
 }
 
 } // namespace Insights

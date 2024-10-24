@@ -23,7 +23,7 @@
 #include <string.h>
 #include "in_memory_diagnostic_storage.h"
 
-using chip::Tracing::InMemoryDiagnosticStorage;
+using namespace chip::Tracing;
 
 namespace Insights {
 

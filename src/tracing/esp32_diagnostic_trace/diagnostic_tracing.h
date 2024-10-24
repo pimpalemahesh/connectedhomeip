@@ -43,7 +43,6 @@ public:
 
 private:
     using ValueType = MetricEvent::Value::Type;
-    uint16_t value = 0;
 };
 
 } // namespace Insights

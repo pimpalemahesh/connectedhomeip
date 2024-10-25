@@ -21,7 +21,7 @@
 
 using namespace chip;
 
-namespace Insights {
+namespace Diagnostics {
 
 // This is a one time allocation for counters. It is not supposed to be freed.
 ESPDiagnosticCounter * ESPDiagnosticCounter::mHead = nullptr;
@@ -65,4 +65,4 @@ void ESPDiagnosticCounter::ReportMetrics()
     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Counter diagnostic data"));
 }
 
-} // namespace Insights
+} // namespace Diagnostics

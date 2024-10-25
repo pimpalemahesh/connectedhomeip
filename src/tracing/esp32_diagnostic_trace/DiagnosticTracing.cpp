@@ -29,7 +29,7 @@
 
 namespace chip {
 namespace Tracing {
-namespace Insights {
+namespace Diagnostics {
 
 #define LOG_HEAP_INFO(label, group, entry_exit)                                                                                    \
     do                                                                                                                             \
@@ -76,6 +76,10 @@ HashValue gPermitList[kPermitListMaxSize] = { MurmurHash("PASESession"),
                                               MurmurHash("GeneralCommissioning"),
                                               MurmurHash("OperationalCredentials"),
                                               MurmurHash("CASEServer"),
+                                              MurmurHash("BLE"),
+                                              MurmurHash("BLE_Error"),
+                                              MurmurHash("Wifi"),
+                                              MurmurHash("Wifi_Error"),
                                               MurmurHash("Fabric") }; // namespace
 
 bool IsPermitted(HashValue hashValue)
@@ -108,9 +112,6 @@ void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event)
 {
     DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
     CHIP_ERROR err = CHIP_NO_ERROR;
-
-    printf("LOG MATRIC EVENT CALLED\n");
-
     switch (event.ValueType())
     {
     case ValueType::kInt32: {
@@ -145,11 +146,22 @@ void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event)
 
 void ESP32Diagnostics::TraceCounter(const char * label)
 {
-    ::Insights::ESPDiagnosticCounter::GetInstance(label)->ReportMetrics();
+    ::Diagnostics::ESPDiagnosticCounter::GetInstance(label)->ReportMetrics();
 }
 
-void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
-{
+void ESP32Diagnostics::TraceBegin(const char * label, const char * group) {
+    StoreDiagnostics(label, group);
+}
+
+void ESP32Diagnostics::TraceEnd(const char * label, const char * group) {
+    StoreDiagnostics(label, group);
+}
+
+void ESP32Diagnostics::TraceInstant(const char * label, const char * group) {
+    StoreDiagnostics(label, group);
+}
+
+void ESP32Diagnostics::StoreDiagnostics(const char* label, const char* group) {
     CHIP_ERROR err = CHIP_NO_ERROR;
     HashValue hashValue                           = MurmurHash(group);
     DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
@@ -161,10 +173,6 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
     }
 }
 
-void ESP32Diagnostics::TraceEnd(const char * label, const char * group) {}
-
-void ESP32Diagnostics::TraceInstant(const char * label, const char * group) {}
-
-} // namespace Insights
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

@@ -377,11 +377,11 @@ if(CONFIG_ENABLE_PW_RPC)
 endif()
 
 if (CONFIG_ENABLE_ESP_INSIGHTS_TRACE)
-    list(APPEND chip_libraries "${CMAKE_CURRENT_BINARY_DIR}/lib/libEsp32TracingBackend.a")
+  list(APPEND chip_libraries "${CMAKE_CURRENT_BINARY_DIR}/lib/libEsp32TracingBackend.a")
 endif()
 
 if (CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE)
-    list(APPEND chip_libraries "${CMAKE_CURRENT_BINARY_DIR}/lib/libEsp32DiagnosticsBackend.a")
+  list(APPEND chip_libraries "${CMAKE_CURRENT_BINARY_DIR}/lib/libEsp32DiagnosticsBackend.a")
 endif()
 
 

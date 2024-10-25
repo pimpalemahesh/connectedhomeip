@@ -25,13 +25,13 @@
 #include <string.h>
 #include "tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h"
 
-using namespace chip::Tracing;
+using namespace chip::Tracing::Diagnostics;
 
-namespace Insights {
+namespace Diagnostics {
 
 /**
  * This class is used to monotonically increment the counters as per the label of the counter macro
- * 'MATTER_TRACE_COUNTER(label)' and report the metrics to esp-insights.
+ * 'MATTER_TRACE_COUNTER(label)'
  * As per the label of the counter macro, it adds the counter in the linked list with the name label if not
  * present and returns the same instance and increments the value if the counter is already present
  * in the list.
@@ -55,4 +55,4 @@ public:
     void ReportMetrics();
 };
 
-} // namespace Insights
+} // namespace Diagnostics

@@ -22,22 +22,16 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/core/CHIPError.h>
 
-#define END_USER_BUFFER_SIZE CONFIG_END_USER_BUFFER_SIZE
-#define NETWORK_BUFFER_SIZE CONFIG_NETWORK_BUFFER_SIZE
-
 namespace chip {
 namespace Tracing {
+namespace Diagnostics {
 using namespace chip::Platform;
-
+using chip::TLV::TLVType;
 class DiagnosticStorageImpl : public DiagnosticStorageInterface
 {
 public:
 
-    static DiagnosticStorageImpl& GetInstance()
-    {
-        static DiagnosticStorageImpl instance;
-        return instance;
-    }
+    static DiagnosticStorageImpl& GetInstance(uint8_t * buffer = nullptr, size_t bufferSize = 0);
 
     DiagnosticStorageImpl(const DiagnosticStorageImpl &) = delete;
     DiagnosticStorageImpl & operator=(const DiagnosticStorageImpl &) = delete;
@@ -49,14 +43,12 @@ public:
     bool IsEmptyBuffer();
 
 private:
+    DiagnosticStorageImpl(uint8_t * buffer, size_t bufferSize);
     DiagnosticStorageImpl();
     ~DiagnosticStorageImpl();
 
     TLVCircularBuffer mEndUserCircularBuffer;
-    TLVCircularBuffer mNetworkCircularBuffer;
-    uint8_t mEndUserBuffer[END_USER_BUFFER_SIZE];
-    uint8_t mNetworkBuffer[NETWORK_BUFFER_SIZE];
 };
-
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

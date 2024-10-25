@@ -28,16 +28,16 @@
 #include <memory>
 namespace chip {
 namespace Tracing {
-namespace Insights {
+namespace Diagnostics {
 /// A Backend that outputs data to chip logging.
 ///
 /// Structured data is formatted as json strings.
 class ESP32Diagnostics : public ::chip::Tracing::Backend
 {
 public:
-    ESP32Diagnostics()
+    ESP32Diagnostics(uint8_t *buffer, size_t buffer_size)
     {
-        // Additional initialization if necessary
+        DiagnosticStorageImpl::GetInstance(buffer, buffer_size);
     }
 
     // Deleted copy constructor and assignment operator to prevent copying
@@ -60,11 +60,12 @@ public:
     void LogNodeDiscovered(NodeDiscoveredInfo &) override;
     void LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo &) override;
     void LogMetricEvent(const MetricEvent &) override;
+    void StoreDiagnostics(const char* label, const char* group);
 
 private:
     using ValueType = MetricEvent::Value::Type;
 };
 
-} // namespace Insights
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

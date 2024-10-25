@@ -32,21 +32,21 @@
 
 namespace chip {
 namespace Tracing {
-namespace Insights {
+namespace Diagnostics {
 class Scoped
 {
 public:
     inline Scoped(const char * label, const char * group) : mLabel(label), mGroup(group) { MATTER_TRACE_BEGIN(label, group); }
-    inline ~Scoped() { MATTER_TRACE_END(mLabel, mGroup); }
+    inline ~Scoped() {}
 
 private:
     const char * mLabel;
     const char * mGroup;
 };
-} // namespace Insights
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip
 #define _CONCAT_IMPL(a, b) a##b
 #define _MACRO_CONCAT(a, b) _CONCAT_IMPL(a, b)
 
-#define MATTER_TRACE_SCOPE(label, group) ::chip::Tracing::Insights::Scoped _MACRO_CONCAT(_trace_scope, __COUNTER__)(label, group)
+#define MATTER_TRACE_SCOPE(label, group) ::chip::Tracing::Diagnostics::Scoped _MACRO_CONCAT(_trace_scope, __COUNTER__)(label, group)

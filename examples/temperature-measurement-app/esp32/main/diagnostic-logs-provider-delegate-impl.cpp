@@ -29,6 +29,11 @@ using namespace chip::app::Clusters::DiagnosticLogs;
 LogProvider LogProvider::sInstance;
 LogProvider::CrashLogContext LogProvider::sCrashLogContext;
 
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    static uint8_t retrieveBuffer[4096];
+    MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
+#endif
+
 namespace {
 bool IsValidIntent(IntentEnum intent)
 {
@@ -76,7 +81,14 @@ size_t LogProvider::GetSizeForIntent(IntentEnum intent)
     switch (intent)
     {
     case IntentEnum::kEndUserSupport:
-        return static_cast<size_t>(endUserSupportLogEnd - endUserSupportLogStart);
+        {
+            #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+                return 4096;
+            #else
+            return static_cast<size_t>(endUserSupportLogEnd - endUserSupportLogStart);
+            #endif
+        }
+        break;
     case IntentEnum::kNetworkDiag:
         return static_cast<size_t>(networkDiagnosticLogEnd - networkDiagnosticLogStart);
     case IntentEnum::kCrashLogs:
@@ -105,17 +117,12 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
 {
     context->intent = intent;
 
-    #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-        DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
-
-        static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
-        MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
-    #endif
-
     switch (intent)
     {
     case IntentEnum::kEndUserSupport: {
         #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+            DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
+
             if (diagnosticStorage.IsEmptyBuffer())
             {
                 printf("Buffer is empty\n");

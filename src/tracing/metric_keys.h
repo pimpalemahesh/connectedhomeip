@@ -31,6 +31,16 @@ typedef const char * MetricKey;
  */
 constexpr MetricKey kMetricWiFiRSSI = "wifi_rssi";
 
+constexpr MetricKey kMetricCurrentTemp = "current_temperature";
+
+constexpr MetricKey kMetricPeakTemp = "peak_temperature";
+
+constexpr MetricKey kMetricAverageTemp = "average_temperature";
+
+constexpr MetricKey kMetricUptime = "uptime";
+
+constexpr MetricKey kMetricLargestFreeBlock = "largest_free_block_heap";
+
 // Overall PASE session est in device commissioner
 constexpr MetricKey kMetricDeviceCommissionerPASESession = "core_dcm_pase_session";
 

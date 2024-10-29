@@ -32,6 +32,9 @@
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 #include <diagnostic-logs-provider-delegate-impl.h>
 #include <platform/ESP32/ESP32Utils.h>
+#include <tracing/macros.h>
+#include <tracing/metric_event.h>
+#include <esp_system.h>
 
 #include <cmath>
 #include <cstdio>
@@ -71,6 +74,7 @@ chip::DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
 using namespace ::chip;
 using namespace ::chip::DeviceManager;
 using namespace ::chip::Credentials;
+using namespace ::chip::Tracing;
 
 extern const char TAG[] = "temperature-measurement-app";
 
@@ -79,17 +83,17 @@ static AppDeviceCallbacks EchoCallbacks;
 static void InitServer(intptr_t context)
 {
     Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
-
-#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-    static Tracing::Insights::ESP32Diagnostics diagnosticBackend;
-    Tracing::Register(diagnosticBackend);
-#endif
 }
 
 extern "C" void app_main()
 {
 #if CONFIG_ENABLE_PW_RPC
     chip::rpc::Init();
+#endif
+
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    static Tracing::Insights::ESP32Diagnostics diagnosticBackend;
+    Tracing::Register(diagnosticBackend);
 #endif
 
     ESP_LOGI(TAG, "Temperature sensor!");
@@ -137,6 +141,12 @@ extern "C" void app_main()
 #endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
 
     chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
+
+    uint32_t uptime = esp_log_timestamp();
+    while(true) {
+        MATTER_LOG_METRIC(chip::Tracing::kMetricUptime, uptime);
+        vTaskDelay(30000/portTICK_PERIOD_MS);
+    }
 }
 
 using namespace chip::app::Clusters::DiagnosticLogs;

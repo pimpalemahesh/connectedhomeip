@@ -24,12 +24,46 @@
  **/
 #include "DeviceCallbacks.h"
 #include <esp_log.h>
+#include <tracing/macros.h>
+#include <tracing/metric_event.h>
+
+int32_t current_temperature = 20;
+int32_t average_temperature = 20;
+int32_t peak_temperature = 20;
+uint32_t uptime = 0;
+uint32_t error_rate = 0;
 
 static const char TAG[] = "echo-devicecallbacks";
 
 using namespace ::chip;
 using namespace ::chip::Inet;
 using namespace ::chip::System;
+
+void update_diagnostics(uint32_t time) {
+    current_temperature = 15 + (rand() % 20);
+    
+    average_temperature = (average_temperature * uptime + current_temperature) / (uptime + 1);
+    
+    if (current_temperature > peak_temperature) {
+        peak_temperature = current_temperature;
+    }
+
+    uptime = time;
+
+    // Randomize error rate by incrementing randoml
+    error_rate += rand() % 2;
+  }
+  
+
+void diagnostics_timer_callback(uint32_t timestamp) {
+    update_diagnostics(timestamp);
+
+    MATTER_TRACE_COUNTER("TemperatureUpdateCount");
+
+    MATTER_LOG_METRIC(chip::Tracing::kMetricCurrentTemp, current_temperature);
+    MATTER_LOG_METRIC(chip::Tracing::kMetricAverageTemp, average_temperature);
+    MATTER_LOG_METRIC(chip::Tracing::kMetricPeakTemp, peak_temperature);
+}
 
 void AppDeviceCallbacks::PostAttributeChangeCallback(EndpointId endpointId, ClusterId clusterId, AttributeId attributeId,
                                                      uint8_t type, uint16_t size, uint8_t * value)
@@ -41,4 +75,6 @@ void AppDeviceCallbacks::PostAttributeChangeCallback(EndpointId endpointId, Clus
     ESP_LOGI(TAG, "Unhandled cluster ID: %" PRIu32, clusterId);
 
     ESP_LOGI(TAG, "Current free heap: %d\n", heap_caps_get_free_size(MALLOC_CAP_8BIT));
+
+    diagnostics_timer_callback(esp_log_timestamp());
 }

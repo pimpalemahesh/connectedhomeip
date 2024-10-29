@@ -142,8 +142,8 @@ extern "C" void app_main()
 
     chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
 
-    uint32_t uptime = esp_log_timestamp();
     while(true) {
+        uint32_t uptime = esp_log_timestamp();
         MATTER_LOG_METRIC(chip::Tracing::kMetricUptime, uptime);
         vTaskDelay(30000/portTICK_PERIOD_MS);
     }

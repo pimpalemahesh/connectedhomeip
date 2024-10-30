@@ -141,12 +141,6 @@ extern "C" void app_main()
 #endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
 
     chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
-
-    while(true) {
-        uint32_t uptime = esp_log_timestamp();
-        MATTER_LOG_METRIC(chip::Tracing::kMetricUptime, uptime);
-        vTaskDelay(30000/portTICK_PERIOD_MS);
-    }
 }
 
 using namespace chip::app::Clusters::DiagnosticLogs;

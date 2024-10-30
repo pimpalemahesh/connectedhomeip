@@ -35,6 +35,8 @@ cd path/to/chip-tool
 ```
 diagnosticlogs retrieve-logs-request 0 1 1 0 --TransferFileDesignator user.log
 ```
+### ⚠️ Important Note
+**Make sure you provide different file name for each retrieve logs request or delete existing user.log file from /tmp directory.**
 
 ## Steps to parse diagnostic data
 
@@ -59,9 +61,6 @@ chmod +x tlv_diagnostic_parser.py
 ```
 ## Usage
 
-1. Click Parse: Click the Parse button to parse and display the data in the text area below. It will read data from particular log file which will be updated each time you run retrieve-logs command on chip-tool
+1. Enter binary file path in input text box and click on Parse button. for ex. "/tmp/user.log"
 
-2. The parsed data will be displayed in a structured table format under different sections for Metrics, Traces, and Counters.
-
-### ⚠️ Important Note
-**Make sure you parse data after each read operation.**
+2. The parsed data will be displayed in a structured table format under different sections for Traces, Metrics and Counters.

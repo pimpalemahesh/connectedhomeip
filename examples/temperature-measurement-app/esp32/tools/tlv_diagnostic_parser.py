@@ -3,14 +3,14 @@
 import os
 import sys
 from enum import IntEnum
-from tkinter import Tk, Button, Label, Text, Scrollbar, Frame, Entry, BOTH, END
+from tkinter import Tk, Button, Label, Text, Scrollbar, Frame, BOTH, END, Entry
 from tabulate import tabulate
 
 # Set up paths from environment variables
 CHIP_HOME = os.getenv("CHIP_HOME")
 
 if not CHIP_HOME:
-    print("Error: Please set the CHIP_HOME environment variables.")
+    print("Error: Please set the CHIP_HOME environment variable.")
     sys.exit(1)
 
 # Update sys.path for TLVReader import based on CHIP_HOME
@@ -113,11 +113,11 @@ def convert_data():
 
 # GUI Setup
 root = Tk()
-root.title("Hex Data Diagnostic Parser")
+root.title("TLV Diagnostic Data Parser")
 root.geometry("800x600")
 root.configure(bg="#282C34")
 
-title_label = Label(root, text="Hex Data Diagnostic Parser", font=("Arial", 18, "bold"), fg="#61AFEF", bg="#282C34")
+title_label = Label(root, text="TLV Diagnostic Data Parser", font=("Arial", 18, "bold"), fg="#61AFEF", bg="#282C34")
 title_label.pack(pady=10)
 
 file_path_label = Label(root, text="Enter Binary File Path:", font=("Arial", 12), fg="white", bg="#282C34")
@@ -126,7 +126,7 @@ file_path_label.pack(pady=5)
 file_path_entry = Entry(root, font=("Arial", 12), width=60)
 file_path_entry.pack(pady=5)
 
-convert_button = Button(root, text="Convert", command=convert_data, font=("Arial", 12), bg="#98C379", fg="white", width=15)
+convert_button = Button(root, text="Parse", command=convert_data, font=("Arial", 12), bg="#98C379", fg="white", width=15)
 convert_button.pack(pady=10)
 
 output_frame = Frame(root)

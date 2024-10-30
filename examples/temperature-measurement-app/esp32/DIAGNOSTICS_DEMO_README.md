@@ -16,9 +16,10 @@ idf.py monitor
 
 ## Steps to read data using chip-tool
 
-1. Open new terminal and navigate to chip-tool directory
+1. Open new terminal and unzip chip-tool from tools directory
 ```
-cd path/to/chip-tool
+cd tools/
+unzip chip-tool.zip
 ```
 
 2. Commission device using chip-tool
@@ -50,14 +51,9 @@ cd tools/
 export CHIP_HOME=path/to/connectedhomeip/
 ```
 
-3. Give the script executable permission:
+3. Run the parser application:
 ```
-chmod +x tlv_diagnostic_parser.py
-```
-
-4. Run the parser application:
-```
-./tlv_diagnostic_parser.py
+python3 tlv_diagnostic_parser.py
 ```
 ## Usage
 

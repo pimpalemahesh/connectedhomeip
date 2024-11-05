@@ -25,9 +25,13 @@
 namespace chip {
 namespace Tracing {
 
-DiagnosticStorageImpl::DiagnosticStorageImpl() :
-    mEndUserCircularBuffer(mEndUserBuffer, END_USER_BUFFER_SIZE), mNetworkCircularBuffer(mNetworkBuffer, NETWORK_BUFFER_SIZE)
-{}
+DiagnosticStorageImpl::DiagnosticStorageImpl(uint8_t * buffer, size_t bufferSize)
+    : mEndUserCircularBuffer(buffer, bufferSize) {}
+
+DiagnosticStorageImpl & DiagnosticStorageImpl::GetInstance(uint8_t * buffer, size_t bufferSize) {
+    static DiagnosticStorageImpl instance(buffer, bufferSize);
+    return instance;
+}
 
 DiagnosticStorageImpl::~DiagnosticStorageImpl() {}
 

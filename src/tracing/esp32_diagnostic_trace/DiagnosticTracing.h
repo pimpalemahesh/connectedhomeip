@@ -35,9 +35,9 @@ namespace Insights {
 class ESP32Diagnostics : public ::chip::Tracing::Backend
 {
 public:
-    ESP32Diagnostics()
+    ESP32Diagnostics(uint8_t *buffer, size_t buffer_size)
     {
-        // Additional initialization if necessary
+        DiagnosticStorageImpl::GetInstance(buffer, buffer_size);
     }
 
     // Deleted copy constructor and assignment operator to prevent copying

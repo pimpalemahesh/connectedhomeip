@@ -63,6 +63,11 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
 
+        // TIMESTAMP
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
+        
         // LABEL
         err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
@@ -72,11 +77,6 @@ public:
         err = writer.Put(ContextTag(DIAGNOSTICS_TAG::VALUE), value_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", chip::ErrorStr(err)));
-
-        // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
 
         printf("Metric Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(metricContainer);
@@ -109,20 +109,20 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", chip::ErrorStr(err)));
 
-        // LABEL
-        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
+        // TIMESTAMP
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
 
         // GROUP
         err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::GROUP), group_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", chip::ErrorStr(err)));
 
-        // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        // LABEL
+        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
 
         printf("Trace Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(traceContainer);
@@ -155,6 +155,11 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", chip::ErrorStr(err)));
 
+        // TIMESTAMP
+        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
+        
         // LABEL
         err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
@@ -164,11 +169,6 @@ public:
         err = writer.Put(ContextTag(DIAGNOSTICS_TAG::COUNTER), count_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", chip::ErrorStr(err)));
-
-        // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
 
         printf("Counter Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(counterContainer);

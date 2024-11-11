@@ -30,7 +30,7 @@ LogProvider LogProvider::sInstance;
 LogProvider::CrashLogContext LogProvider::sCrashLogContext;
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-    static uint8_t retrieveBuffer[CONFIG_DIAGNOSTIC_RETRIEVAL_BUFFER_SIZE];
+    static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
     MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
 #endif
 
@@ -83,9 +83,9 @@ size_t LogProvider::GetSizeForIntent(IntentEnum intent)
     case IntentEnum::kEndUserSupport:
         {
             #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-                return 4096;
+                return RETRIEVAL_BUFFER_SIZE;
             #else
-            return static_cast<size_t>(endUserSupportLogEnd - endUserSupportLogStart);
+                return static_cast<size_t>(endUserSupportLogEnd - endUserSupportLogStart);
             #endif
         }
         break;

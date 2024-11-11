@@ -22,13 +22,10 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/core/CHIPError.h>
 
-#define END_USER_BUFFER_SIZE CONFIG_END_USER_BUFFER_SIZE
-#define NETWORK_BUFFER_SIZE CONFIG_NETWORK_BUFFER_SIZE
-
 namespace chip {
 namespace Tracing {
+namespace Diagnostics {
 using namespace chip::Platform;
-
 class DiagnosticStorageImpl : public DiagnosticStorageInterface
 {
 public:
@@ -51,6 +48,6 @@ private:
 
     TLVCircularBuffer mEndUserCircularBuffer;
 };
-
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

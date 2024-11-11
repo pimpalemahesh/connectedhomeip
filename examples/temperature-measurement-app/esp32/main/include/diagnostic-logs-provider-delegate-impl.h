@@ -31,8 +31,8 @@
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-#define RETRIEVAL_BUFFER_SIZE CONFIG_DIAGNOSTIC_RETRIEVAL_BUFFER_SIZE
-using namespace chip::Tracing;
+#define RETRIEVAL_BUFFER_SIZE CONFIG_END_USER_BUFFER_SIZE
+using namespace chip::Tracing::Diagnostics;
 #endif
 
 namespace chip {

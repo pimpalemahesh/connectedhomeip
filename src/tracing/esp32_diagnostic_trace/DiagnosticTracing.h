@@ -28,7 +28,7 @@
 #include <memory>
 namespace chip {
 namespace Tracing {
-namespace Insights {
+namespace Diagnostics {
 /// A Backend that outputs data to chip logging.
 ///
 /// Structured data is formatted as json strings.
@@ -65,6 +65,6 @@ private:
     using ValueType = MetricEvent::Value::Type;
 };
 
-} // namespace Insights
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

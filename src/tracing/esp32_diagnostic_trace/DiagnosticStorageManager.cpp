@@ -17,7 +17,6 @@
  *    limitations under the License.
  */
 
-#include <esp_log.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/logging/CHIPLogging.h>
 #include <tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h>
@@ -25,6 +24,7 @@
 namespace chip {
 namespace Tracing {
 
+namespace Diagnostics {
 DiagnosticStorageImpl::DiagnosticStorageImpl(uint8_t * buffer, size_t bufferSize)
     : mEndUserCircularBuffer(buffer, bufferSize) {}
 
@@ -63,17 +63,11 @@ CHIP_ERROR DiagnosticStorageImpl::Store(DiagnosticEntry & diagnostic)
 
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
-
-    printf("Total Data Length in Buffer : %lu\n Total available length in buffer : %lu\nTotal buffer length : %lu\n",
-           mEndUserCircularBuffer.DataLength(), mEndUserCircularBuffer.AvailableDataLength(),
-           mEndUserCircularBuffer.GetTotalDataLength());
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
 {
-    printf("***************************************************************************RETRIEVAL "
-           "STARTED**********************************************************\n");
     CHIP_ERROR err = CHIP_NO_ERROR;
     chip::TLV::TLVReader reader;
     reader.Init(mEndUserCircularBuffer);
@@ -114,8 +108,6 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
             if ((reader.GetType() == chip::TLV::kTLVType_Structure) &&
                 (reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::METRIC) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::TRACE) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::COUNTER)))
             {
-                ESP_LOGW("SIZE", "Total read till now: %ld Total write till now: %ld", reader.GetLengthRead(), writer.GetLengthWritten());
-
                 if ((reader.GetLengthRead() - writer.GetLengthWritten()) < writer.GetRemainingFreeLength()) {
                     err = writer.CopyElement(reader);
                     if (err == CHIP_ERROR_BUFFER_TOO_SMALL) {
@@ -123,7 +115,6 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
                         break;
                     }
                     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
-                    ChipLogProgress(DeviceLayer, "Read metric container successfully");
                     mEndUserCircularBuffer.EvictHead();
                 }
                 else {
@@ -141,17 +132,11 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
             err = reader.ExitContainer(outerReaderContainer);
             VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                                 ChipLogError(DeviceLayer, "Failed to exit outer TLV container: %s", chip::ErrorStr(err)));
-
-            
         }
         else
         {
             ChipLogError(DeviceLayer, "Unexpected TLV element type or tag in outer container");
         }
-
-        printf("Total Data Length in Buffer: %lu\n Total available length in buffer: %lu\nTotal buffer length: %lu\n",
-               mEndUserCircularBuffer.DataLength(), mEndUserCircularBuffer.AvailableDataLength(),
-               mEndUserCircularBuffer.GetTotalDataLength());
     }
 
     err = writer.EndContainer(outWriterContainer);
@@ -160,7 +145,7 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
     payload.reduce_size(writer.GetLengthWritten());
-    printf("---------------Total written bytes successfully : %ld----------------\n", writer.GetLengthWritten());
+    ChipLogProgress(DeviceLayer, "---------------Total written bytes successfully : %ld----------------\n", writer.GetLengthWritten());
     ChipLogProgress(DeviceLayer, "Retrieval successful");
     return CHIP_NO_ERROR;
 }
@@ -169,6 +154,6 @@ bool DiagnosticStorageImpl::IsEmptyBuffer()
 {
     return mEndUserCircularBuffer.DataLength() == 0;
 }
-
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

@@ -76,8 +76,8 @@ extern const char TAG[] = "temperature-measurement-app";
 
 static AppDeviceCallbacks EchoCallbacks;
 
-#if CONFIG_ESP_DIAGNOSTICS_ENABLED
-using namespace ::chip::Tracing;
+#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+using namespace chip::Tracing::Diagnostics;
 static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE];
 static size_t buffer_size = CONFIG_END_USER_BUFFER_SIZE;
 #endif
@@ -94,7 +94,7 @@ extern "C" void app_main()
 #endif
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-    static Tracing::Insights::ESP32Diagnostics diagnosticBackend(endUserBuffer, buffer_size);
+    static ESP32Diagnostics diagnosticBackend(endUserBuffer, buffer_size);
     Tracing::Register(diagnosticBackend);
 #endif
 

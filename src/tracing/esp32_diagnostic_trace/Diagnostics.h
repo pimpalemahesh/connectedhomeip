@@ -25,6 +25,7 @@
 namespace chip {
 namespace Tracing {
 
+namespace Diagnostics {
 using namespace chip::TLV;
 
 enum class DIAGNOSTICS_TAG
@@ -67,7 +68,7 @@ public:
         err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", chip::ErrorStr(err)));
-        
+
         // LABEL
         err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
@@ -78,7 +79,6 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", chip::ErrorStr(err)));
 
-        printf("Metric Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", chip::ErrorStr(err)));
@@ -124,7 +124,6 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", chip::ErrorStr(err)));
 
-        printf("Trace Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to end TLV container for Trace : %s", chip::ErrorStr(err)));
@@ -159,7 +158,7 @@ public:
         err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", chip::ErrorStr(err)));
-        
+
         // LABEL
         err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
@@ -170,7 +169,6 @@ public:
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", chip::ErrorStr(err)));
 
-        printf("Counter Value written to storage successfully : %s\n", label_);
         err = writer.EndContainer(counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to end TLV container for counter : %s", chip::ErrorStr(err)));
@@ -192,5 +190,6 @@ public:
     virtual CHIP_ERROR Retrieve(MutableByteSpan &payload) = 0;
 };
 
+} // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

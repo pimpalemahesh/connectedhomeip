@@ -71,14 +71,16 @@ chip::DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
 using namespace ::chip;
 using namespace ::chip::DeviceManager;
 using namespace ::chip::Credentials;
-using namespace ::chip::Tracing;
 
 extern const char TAG[] = "temperature-measurement-app";
 
 static AppDeviceCallbacks EchoCallbacks;
 
+#if CONFIG_ESP_DIAGNOSTICS_ENABLED
+using namespace ::chip::Tracing;
 static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE];
 static size_t buffer_size = CONFIG_END_USER_BUFFER_SIZE;
+#endif
 
 static void InitServer(intptr_t context)
 {

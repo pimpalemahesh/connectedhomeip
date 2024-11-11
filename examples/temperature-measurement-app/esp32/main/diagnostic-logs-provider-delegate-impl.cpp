@@ -30,7 +30,7 @@ LogProvider LogProvider::sInstance;
 LogProvider::CrashLogContext LogProvider::sCrashLogContext;
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-    static uint8_t retrieveBuffer[4096];
+    static uint8_t retrieveBuffer[CONFIG_DIAGNOSTIC_RETRIEVAL_BUFFER_SIZE];
     MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
 #endif
 
@@ -136,7 +136,6 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
                 ChipLogError(DeviceLayer, "Failed to retrieve data: %s", chip::ErrorStr(err));
                 return err;
             }
-
             // Now, assign the span to the EndUserSupport object or whatever is required
             context->EndUserSupport.span = endUserSupportSpan;
         #else

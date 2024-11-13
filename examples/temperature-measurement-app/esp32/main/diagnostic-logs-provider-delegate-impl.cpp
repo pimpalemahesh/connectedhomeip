@@ -29,11 +29,6 @@ using namespace chip::app::Clusters::DiagnosticLogs;
 LogProvider LogProvider::sInstance;
 LogProvider::CrashLogContext LogProvider::sCrashLogContext;
 
-#if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-    static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
-    MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
-#endif
-
 namespace {
 bool IsValidIntent(IntentEnum intent)
 {
@@ -122,6 +117,8 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
     case IntentEnum::kEndUserSupport: {
         #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
             DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
+            static uint8_t retrieveBuffer[RETRIEVAL_BUFFER_SIZE];
+            MutableByteSpan endUserSupportSpan(retrieveBuffer, sizeof(retrieveBuffer));
 
             if (diagnosticStorage.IsEmptyBuffer())
             {

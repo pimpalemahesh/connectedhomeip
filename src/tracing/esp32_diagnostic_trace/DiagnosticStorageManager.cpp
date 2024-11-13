@@ -111,7 +111,6 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
                         break;
                     }
                     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
-                    mEndUserCircularBuffer.EvictHead();
                 }
                 else {
                     ChipLogProgress(DeviceLayer, "Buffer too small to occupy current TLV");

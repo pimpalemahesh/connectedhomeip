@@ -60,7 +60,7 @@ public:
     void LogNodeDiscovered(NodeDiscoveredInfo &) override;
     void LogNodeDiscoveryFailed(NodeDiscoveryFailedInfo &) override;
     void LogMetricEvent(const MetricEvent &) override;
-    void StoreDiagnostic(const char* label, const char* group);
+    void StoreDiagnostics(const char* label, const char* group);
 
 private:
     using ValueType = MetricEvent::Value::Type;

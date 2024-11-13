@@ -26,6 +26,7 @@ namespace chip {
 namespace Tracing {
 namespace Diagnostics {
 using namespace chip::Platform;
+using chip::TLV::TLVType;
 class DiagnosticStorageImpl : public DiagnosticStorageInterface
 {
 public:

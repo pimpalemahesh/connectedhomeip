@@ -43,10 +43,10 @@ CHIP_ERROR DiagnosticStorageImpl::Store(DiagnosticEntry & diagnostic)
     writer.Init(mEndUserCircularBuffer);
 
     // Start a TLV structure container (Anonymous)
-    chip::TLV::TLVType outerContainer;
-    err = writer.StartContainer(AnonymousTag(), chip::TLV::TLVType::kTLVType_Structure, outerContainer);
+    TLVType outerContainer;
+    err = writer.StartContainer(AnonymousTag(), kTLVType_Structure, outerContainer);
     VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                        ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", chip::ErrorStr(err)));
+                        ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", ErrorStr(err)));
 
     err = diagnostic.Encode(writer);
     if (err != CHIP_NO_ERROR)
@@ -59,7 +59,7 @@ CHIP_ERROR DiagnosticStorageImpl::Store(DiagnosticEntry & diagnostic)
     }
     err = writer.EndContainer(outerContainer);
     VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                        ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", chip::ErrorStr(err)));
+                        ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", ErrorStr(err)));
 
     err = writer.Finalize();
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
@@ -69,16 +69,14 @@ CHIP_ERROR DiagnosticStorageImpl::Store(DiagnosticEntry & diagnostic)
 CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
-    chip::TLV::TLVReader reader;
+    CircularTLVReader reader;
     reader.Init(mEndUserCircularBuffer);
 
-    chip::TLV::TLVWriter writer;
+    TLVWriter writer;
     writer.Init(payload);
 
-    uint32_t totalBufferSize = 0;
-
-    chip::TLV::TLVType outWriterContainer;
-    err = writer.StartContainer(AnonymousTag(), chip::TLV::TLVType::kTLVType_List, outWriterContainer);
+    TLVType outWriterContainer;
+    err = writer.StartContainer(AnonymousTag(), kTLVType_List, outWriterContainer);
     VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to start container"));
 
     while (true)
@@ -90,22 +88,20 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
             break;
         }
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to read next TLV element: %s", chip::ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to read next TLV element: %s", ErrorStr(err)));
 
-        if (reader.GetType() == chip::TLV::TLVType::kTLVType_Structure && reader.GetTag() == chip::TLV::AnonymousTag())
+        if (reader.GetType() == kTLVType_Structure && reader.GetTag() == AnonymousTag())
         {
-            chip::TLV::TLVType outerReaderContainer;
+            TLVType outerReaderContainer;
             err = reader.EnterContainer(outerReaderContainer);
             VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                                ChipLogError(DeviceLayer, "Failed to enter outer TLV container: %s", chip::ErrorStr(err)));
+                                ChipLogError(DeviceLayer, "Failed to enter outer TLV container: %s", ErrorStr(err)));
 
             err = reader.Next();
-            VerifyOrReturnError(
-                err == CHIP_NO_ERROR, err,
-                ChipLogError(DeviceLayer, "Failed to read next TLV element in outer container: %s", chip::ErrorStr(err)));
+            VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to read next TLV element in outer container: %s", ErrorStr(err)));
 
             // Check if the current element is a METRIC or TRACE container
-            if ((reader.GetType() == chip::TLV::kTLVType_Structure) &&
+            if ((reader.GetType() == kTLVType_Structure) &&
                 (reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::METRIC) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::TRACE) || reader.GetTag() == ContextTag(DIAGNOSTICS_TAG::COUNTER)))
             {
                 if ((reader.GetLengthRead() - writer.GetLengthWritten()) < writer.GetRemainingFreeLength()) {
@@ -131,7 +127,7 @@ CHIP_ERROR DiagnosticStorageImpl::Retrieve(MutableByteSpan & payload)
             // Exit the outer container
             err = reader.ExitContainer(outerReaderContainer);
             VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                                ChipLogError(DeviceLayer, "Failed to exit outer TLV container: %s", chip::ErrorStr(err)));
+                                ChipLogError(DeviceLayer, "Failed to exit outer TLV container: %s", ErrorStr(err)));
         }
         else
         {

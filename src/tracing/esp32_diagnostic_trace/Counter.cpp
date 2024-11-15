@@ -45,8 +45,8 @@ ESPDiagnosticCounter * ESPDiagnosticCounter::GetInstance(const char * label)
     VerifyOrDie(ptr != nullptr);
 
     ESPDiagnosticCounter * newInstance = new (ptr) ESPDiagnosticCounter(label);
-    newInstance->mNext               = mHead;
-    mHead                            = newInstance;
+    newInstance->mNext                 = mHead;
+    mHead                              = newInstance;
 
     return newInstance;
 }
@@ -61,7 +61,7 @@ void ESPDiagnosticCounter::ReportMetrics()
     CHIP_ERROR err = CHIP_NO_ERROR;
     Counter counter(label, instanceCount, esp_log_timestamp());
     DiagnosticStorageImpl & diagnosticStorage = DiagnosticStorageImpl::GetInstance();
-    err = diagnosticStorage.Store(counter);
+    err                                       = diagnosticStorage.Store(counter);
     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Counter diagnostic data"));
 }
 

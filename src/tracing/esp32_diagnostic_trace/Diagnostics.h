@@ -19,8 +19,8 @@
 #pragma once
 
 #include <lib/core/CHIPError.h>
-#include <lib/support/Span.h>
 #include <lib/core/TLVCircularBuffer.h>
+#include <lib/support/Span.h>
 
 namespace chip {
 namespace Tracing {
@@ -30,34 +30,36 @@ using namespace chip::TLV;
 
 enum class DIAGNOSTICS_TAG
 {
-    METRIC     = 0,
-    TRACE      = 1,
-    COUNTER    = 2,
-    LABEL      = 3,
-    GROUP      = 4,
-    VALUE      = 5,
-    TIMESTAMP  = 6
+    METRIC    = 0,
+    TRACE     = 1,
+    COUNTER   = 2,
+    LABEL     = 3,
+    GROUP     = 4,
+    VALUE     = 5,
+    TIMESTAMP = 6
 };
 
-class DiagnosticEntry {
+class DiagnosticEntry
+{
 public:
-    virtual ~DiagnosticEntry() = default;
-    virtual CHIP_ERROR Encode(CircularTLVWriter &writer) = 0;
+    virtual ~DiagnosticEntry()                            = default;
+    virtual CHIP_ERROR Encode(CircularTLVWriter & writer) = 0;
 };
 
-template<typename T>
-class Metric : public DiagnosticEntry {
+template <typename T>
+class Metric : public DiagnosticEntry
+{
 public:
-    Metric(const char* label, T value, uint32_t timestamp)
-        : label_(label), value_(value), timestamp_(timestamp) {}
+    Metric(const char * label, T value, uint32_t timestamp) : label_(label), value_(value), timestamp_(timestamp) {}
 
     Metric() {}
 
-    const char* GetLabel() const { return label_; }
+    const char * GetLabel() const { return label_; }
     T GetValue() const { return value_; }
     uint32_t GetTimestamp() const { return timestamp_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    {
         CHIP_ERROR err = CHIP_NO_ERROR;
         TLVType metricContainer;
         err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::METRIC), kTLVType_Structure, metricContainer);
@@ -87,23 +89,24 @@ public:
     }
 
 private:
-    const char* label_;
+    const char * label_;
     T value_;
     uint32_t timestamp_;
 };
 
-class Trace : public DiagnosticEntry {
+class Trace : public DiagnosticEntry
+{
 public:
-    Trace(const char* label, const char* group,  uint32_t timestamp)
-        : label_(label), group_(group), timestamp_(timestamp) {}
+    Trace(const char * label, const char * group, uint32_t timestamp) : label_(label), group_(group), timestamp_(timestamp) {}
 
     Trace() {}
 
-    const char* GetLabel() const { return label_; }
+    const char * GetLabel() const { return label_; }
     uint32_t GetTimestamp() const { return timestamp_; }
-    const char* GetGroup() const { return group_; }
+    const char * GetGroup() const { return group_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    {
         CHIP_ERROR err = CHIP_NO_ERROR;
         TLVType traceContainer;
         err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::TRACE), kTLVType_Structure, traceContainer);
@@ -133,15 +136,15 @@ public:
     }
 
 private:
-    const char* label_;
-    const char* group_;
+    const char * label_;
+    const char * group_;
     uint32_t timestamp_;
 };
 
-class Counter : public DiagnosticEntry {
+class Counter : public DiagnosticEntry
+{
 public:
-    Counter(const char* label, uint32_t count, uint32_t timestamp)
-        : label_(label), count_(count), timestamp_(timestamp) {}
+    Counter(const char * label, uint32_t count, uint32_t timestamp) : label_(label), count_(count), timestamp_(timestamp) {}
 
     Counter() {}
 
@@ -149,7 +152,8 @@ public:
 
     uint32_t GetTimestamp() const { return timestamp_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter &writer) override {
+    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    {
         CHIP_ERROR err = CHIP_NO_ERROR;
         TLVType counterContainer;
         err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::COUNTER), kTLVType_Structure, counterContainer);
@@ -179,18 +183,37 @@ public:
     }
 
 private:
-    const char* label_;
+    const char * label_;
     uint32_t count_;
     uint32_t timestamp_;
 };
 
-class DiagnosticStorageInterface {
+/**
+ * @brief Interface for storing and retrieving diagnostic data.
+ */
+class DiagnosticStorageInterface
+{
 public:
+    /**
+     * @brief Virtual destructor for the interface.
+     */
     virtual ~DiagnosticStorageInterface() = default;
 
-    virtual CHIP_ERROR Store(DiagnosticEntry& diagnostic) = 0;
+    /**
+     * @brief Stores a diagnostic entry.
+     * @param diagnostic  Reference to a DiagnosticEntry object containing the
+     *                    diagnostic data to store.
+     * @return CHIP_ERROR Returns CHIP_NO_ERROR on success, or an appropriate error code on failure.
+     */
+    virtual CHIP_ERROR Store(DiagnosticEntry & diagnostic) = 0;
 
-    virtual CHIP_ERROR Retrieve(MutableByteSpan &payload) = 0;
+    /**
+     * @brief Retrieves diagnostic data as a payload.
+     * @param payload  Reference to a MutableByteSpan where the retrieved
+     *                 diagnostic data will be stored.
+     * @return CHIP_ERROR Returns CHIP_NO_ERROR on success, or an appropriate error code on failure.
+     */
+    virtual CHIP_ERROR Retrieve(MutableByteSpan & payload) = 0;
 };
 
 } // namespace Diagnostics

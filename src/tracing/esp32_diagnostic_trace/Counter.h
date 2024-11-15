@@ -18,12 +18,12 @@
 
 #pragma once
 
+#include "tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h"
 #include <esp_diagnostics_metrics.h>
 #include <esp_log.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CHIPMemString.h>
 #include <string.h>
-#include "tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h"
 
 using namespace chip::Tracing::Diagnostics;
 
@@ -41,7 +41,7 @@ class ESPDiagnosticCounter
 {
 private:
     static ESPDiagnosticCounter * mHead; // head of the counter list
-    const char * label;                // unique key ,it is used as a static string.
+    const char * label;                  // unique key ,it is used as a static string.
     int32_t instanceCount;
     ESPDiagnosticCounter * mNext; // pointer to point to the next entry in the list
 

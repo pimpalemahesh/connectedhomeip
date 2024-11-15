@@ -19,8 +19,8 @@
 #pragma once
 
 #include "Diagnostics.h"
-#include <lib/support/CHIPMem.h>
 #include <lib/core/CHIPError.h>
+#include <lib/support/CHIPMem.h>
 
 namespace chip {
 namespace Tracing {
@@ -30,15 +30,14 @@ using chip::TLV::TLVType;
 class DiagnosticStorageImpl : public DiagnosticStorageInterface
 {
 public:
+    static DiagnosticStorageImpl & GetInstance(uint8_t * buffer = nullptr, size_t bufferSize = 0);
 
-    static DiagnosticStorageImpl& GetInstance(uint8_t * buffer = nullptr, size_t bufferSize = 0);
-
-    DiagnosticStorageImpl(const DiagnosticStorageImpl &) = delete;
+    DiagnosticStorageImpl(const DiagnosticStorageImpl &)             = delete;
     DiagnosticStorageImpl & operator=(const DiagnosticStorageImpl &) = delete;
 
     CHIP_ERROR Store(DiagnosticEntry & diagnostic) override;
 
-    CHIP_ERROR Retrieve(MutableByteSpan &payload) override;
+    CHIP_ERROR Retrieve(MutableByteSpan & payload) override;
 
     bool IsEmptyBuffer();
 

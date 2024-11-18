@@ -19,8 +19,8 @@
 #include <string.h>
 #include <tracing/esp32_diagnostic_trace/Counter.h>
 
-using namespace chip;
-
+namespace chip {
+namespace Tracing {
 namespace Diagnostics {
 
 // This is a one time allocation for counters. It is not supposed to be freed.
@@ -66,3 +66,5 @@ void ESPDiagnosticCounter::ReportMetrics()
 }
 
 } // namespace Diagnostics
+} // namespace Tracing
+} // namespace chip

@@ -25,8 +25,6 @@
 namespace chip {
 namespace Tracing {
 namespace Diagnostics {
-using namespace chip::Platform;
-using chip::TLV::TLVType;
 class DiagnosticStorageImpl : public DiagnosticStorageInterface
 {
 public:
@@ -46,7 +44,7 @@ private:
     DiagnosticStorageImpl();
     ~DiagnosticStorageImpl();
 
-    TLVCircularBuffer mEndUserCircularBuffer;
+    chip::TLV::TLVCircularBuffer mEndUserCircularBuffer;
 };
 } // namespace Diagnostics
 } // namespace Tracing

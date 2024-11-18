@@ -25,8 +25,8 @@
 #include <lib/support/CHIPMemString.h>
 #include <string.h>
 
-using namespace chip::Tracing::Diagnostics;
-
+namespace chip {
+namespace Tracing {
 namespace Diagnostics {
 
 /**
@@ -56,3 +56,5 @@ public:
 };
 
 } // namespace Diagnostics
+} // namespace Tracing
+} // namespace chip

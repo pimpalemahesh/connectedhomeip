@@ -146,7 +146,7 @@ void ESP32Diagnostics::LogMetricEvent(const MetricEvent & event)
 
 void ESP32Diagnostics::TraceCounter(const char * label)
 {
-    ::Diagnostics::ESPDiagnosticCounter::GetInstance(label)->ReportMetrics();
+    ESPDiagnosticCounter::GetInstance(label)->ReportMetrics();
 }
 
 void ESP32Diagnostics::TraceBegin(const char * label, const char * group)

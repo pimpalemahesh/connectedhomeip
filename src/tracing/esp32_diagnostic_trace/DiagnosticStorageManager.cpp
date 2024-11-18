@@ -23,6 +23,7 @@
 
 namespace chip {
 namespace Tracing {
+using namespace chip::TLV;
 
 namespace Diagnostics {
 DiagnosticStorageImpl::DiagnosticStorageImpl(uint8_t * buffer, size_t bufferSize) : mEndUserCircularBuffer(buffer, bufferSize) {}

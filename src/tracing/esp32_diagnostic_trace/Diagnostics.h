@@ -26,7 +26,6 @@ namespace chip {
 namespace Tracing {
 
 namespace Diagnostics {
-using namespace chip::TLV;
 
 enum class DIAGNOSTICS_TAG
 {
@@ -42,8 +41,8 @@ enum class DIAGNOSTICS_TAG
 class DiagnosticEntry
 {
 public:
-    virtual ~DiagnosticEntry()                            = default;
-    virtual CHIP_ERROR Encode(CircularTLVWriter & writer) = 0;
+    virtual ~DiagnosticEntry()                                       = default;
+    virtual CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) = 0;
 };
 
 template <typename T>
@@ -58,26 +57,26 @@ public:
     T GetValue() const { return value_; }
     uint32_t GetTimestamp() const { return timestamp_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
-        TLVType metricContainer;
-        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::METRIC), kTLVType_Structure, metricContainer);
+        chip::TLV::TLVType metricContainer;
+        err = writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::METRIC), chip::TLV::kTLVType_Structure, metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
+        err = writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for METRIC : %s", ErrorStr(err)));
 
         // VALUE
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::VALUE), value_);
+        err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::VALUE), value_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for METRIC : %s", ErrorStr(err)));
 
@@ -105,26 +104,26 @@ public:
     uint32_t GetTimestamp() const { return timestamp_; }
     const char * GetGroup() const { return group_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
-        TLVType traceContainer;
-        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::TRACE), kTLVType_Structure, traceContainer);
+        chip::TLV::TLVType traceContainer;
+        err = writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TRACE), chip::TLV::kTLVType_Structure, traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", ErrorStr(err)));
 
         // GROUP
-        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::GROUP), group_);
+        err = writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::GROUP), group_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write GROUP for TRACE : %s", ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
+        err = writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for TRACE : %s", ErrorStr(err)));
 
@@ -152,26 +151,27 @@ public:
 
     uint32_t GetTimestamp() const { return timestamp_; }
 
-    CHIP_ERROR Encode(CircularTLVWriter & writer) override
+    CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
-        TLVType counterContainer;
-        err = writer.StartContainer(ContextTag(DIAGNOSTICS_TAG::COUNTER), kTLVType_Structure, counterContainer);
+        chip::TLV::TLVType counterContainer;
+        err =
+            writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER), chip::TLV::kTLVType_Structure, counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", ErrorStr(err)));
 
         // TIMESTAMP
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
+        err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for COUNTER : %s", ErrorStr(err)));
 
         // LABEL
-        err = writer.PutString(ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
+        err = writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::LABEL), label_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write LABEL for COUNTER : %s", ErrorStr(err)));
 
         // COUNT
-        err = writer.Put(ContextTag(DIAGNOSTICS_TAG::COUNTER), count_);
+        err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER), count_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
                             ChipLogError(DeviceLayer, "Failed to write VALUE for COUNTER : %s", ErrorStr(err)));
 

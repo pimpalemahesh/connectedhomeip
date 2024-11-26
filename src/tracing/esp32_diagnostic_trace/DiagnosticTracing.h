@@ -21,7 +21,7 @@
 #include <esp_log.h>
 #include <lib/core/CHIPError.h>
 #include <tracing/backend.h>
-#include <tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h>
+#include <tracing/esp32_diagnostic_trace/Diagnostics.h>
 #include <tracing/metric_event.h>
 
 #include <memory>

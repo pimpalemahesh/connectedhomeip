@@ -18,9 +18,9 @@
 
 #pragma once
 
-#include "Diagnostics.h"
 #include <lib/core/CHIPError.h>
 #include <lib/support/CHIPMem.h>
+#include <tracing/esp32_diagnostic_trace/Diagnostics.h>
 
 namespace chip {
 namespace Tracing {

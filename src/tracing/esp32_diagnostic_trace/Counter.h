@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "tracing/esp32_diagnostic_trace/DiagnosticStorageManager.h"
+#include "tracing/esp32_diagnostic_trace/Diagnostics.h"
 #include <esp_diagnostics_metrics.h>
 #include <esp_log.h>
 #include <lib/support/CHIPMem.h>
@@ -48,13 +48,12 @@ public:
         return instance;
     }
 
-    int32_t GetInstanceCount(const char * label) const;
+    uint32_t GetInstanceCount(const char * label) const;
 
-    void ReportMetrics(const char * label);
+    void ReportMetrics(const char * label, DiagnosticStorageInterface & mStorageInstance);
 
 private:
     ESPDiagnosticCounter() {}
-
     static std::map<const char *, uint32_t> mCounterList;
     static void CountInit(const char * label);
 };

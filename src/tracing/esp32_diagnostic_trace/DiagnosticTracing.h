@@ -34,7 +34,7 @@ namespace Diagnostics {
 class ESP32Diagnostics : public ::chip::Tracing::Backend
 {
 public:
-    ESP32Diagnostics(uint8_t * buffer, size_t buffer_size) { DiagnosticStorageImpl::GetInstance(buffer, buffer_size); }
+    ESP32Diagnostics(DiagnosticStorageInterface & storageInstance) : mStorageInstance(storageInstance) {}
 
     // Deleted copy constructor and assignment operator to prevent copying
     ESP32Diagnostics(const ESP32Diagnostics &)             = delete;
@@ -60,6 +60,7 @@ public:
 
 private:
     using ValueType = MetricEvent::Value::Type;
+    DiagnosticStorageInterface & mStorageInstance;
 };
 
 } // namespace Diagnostics

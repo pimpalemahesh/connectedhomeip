@@ -80,7 +80,12 @@ HashValue gPermitList[kPermitListMaxSize] = { MurmurHash("PASESession"),
                                               MurmurHash("BLE_Error"),
                                               MurmurHash("Wifi"),
                                               MurmurHash("Wifi_Error"),
-                                              MurmurHash("Fabric") }; // namespace
+                                              MurmurHash("Fabric"),
+                                              MurmurHash("AP_Protocol"),
+                                              MurmurHash("Bandwidth"),
+                                              MurmurHash("Power_Save_Type"),
+                                              MurmurHash("Secondary_Channel")
+                                              }; // namespace
 
 bool IsPermitted(HashValue hashValue)
 {

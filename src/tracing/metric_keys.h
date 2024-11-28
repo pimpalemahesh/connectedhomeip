@@ -31,6 +31,12 @@ typedef const char * MetricKey;
  */
 constexpr MetricKey kMetricWiFiRSSI = "wifi_rssi";
 
+// Max wifi rssi
+constexpr MetricKey kMetricWiFiMaxRSSI = "max_rssi";
+
+// Min wifi rssi
+constexpr MetricKey kMetricWiFiMinRSSI = "min_rssi";
+
 // BLuetooth concurrent connections
 constexpr MetricKey kMetricBluetoothConnections = "con_count";
 

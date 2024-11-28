@@ -31,6 +31,9 @@ typedef const char * MetricKey;
  */
 constexpr MetricKey kMetricWiFiRSSI = "wifi_rssi";
 
+// BLuetooth concurrent connections
+constexpr MetricKey kMetricBluetoothConnections = "con_count";
+
 // Overall PASE session est in device commissioner
 constexpr MetricKey kMetricDeviceCommissionerPASESession = "core_dcm_pase_session";
 

@@ -41,12 +41,23 @@
 #include <lwip/nd6.h>
 #include <lwip/netif.h>
 
+#include <tracing/macros.h>
+#include <tracing/metric_event.h>
+
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
 
 using namespace ::chip;
 using namespace ::chip::Inet;
 using namespace ::chip::System;
 using chip::DeviceLayer::Internal::ESP32Utils;
+
+#ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+static int max_rssi        = -100;
+static int current_rssi    = 1;
+static int min_rssi        = 0;
+static uint8_t ap_protocol = 0;
+static uint8_t con_attempt = 0;
+#endif
 
 namespace chip {
 namespace DeviceLayer {
@@ -554,6 +565,20 @@ void ConnectivityManagerImpl::_OnWiFiStationProvisionChange()
 
 void ConnectivityManagerImpl::DriveStationState()
 {
+#ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    esp_wifi_sta_get_rssi(&current_rssi);
+    if (current_rssi != 1 && current_rssi > max_rssi)
+    {
+        max_rssi = current_rssi;
+        printf("Max rssi: %d\n", max_rssi);
+    }
+    if (current_rssi != 1 && current_rssi < min_rssi)
+    {
+        min_rssi = current_rssi;
+        printf("Min rssi: %d\n", min_rssi);
+    }
+#endif
+
     bool stationConnected;
 
     // Refresh the current station mode.  Specifically, this reads the ESP auto_connect flag,
@@ -598,6 +623,7 @@ void ConnectivityManagerImpl::DriveStationState()
             if (err != ESP_OK)
             {
                 ChipLogError(DeviceLayer, "esp_wifi_disconnect() failed: %s", esp_err_to_name(err));
+                MATTER_TRACE_INSTANT(esp_err_to_name(err), "Wifi_Error");
                 return;
             }
 
@@ -644,9 +670,11 @@ void ConnectivityManagerImpl::DriveStationState()
                 if (err != ESP_OK)
                 {
                     ChipLogError(DeviceLayer, "esp_wifi_connect() failed: %s", esp_err_to_name(err));
+                    MATTER_TRACE_INSTANT(esp_err_to_name(err), "Wifi_Error");
+                    MATTER_TRACE_COUNTER("Wifi_fail_attempt");
                     return;
                 }
-
+                MATTER_TRACE_COUNTER("Wifi_success_attemp");
                 ChangeWiFiStationState(kWiFiStationState_Connecting);
             }
 
@@ -670,6 +698,7 @@ void ConnectivityManagerImpl::DriveStationState()
 
 void ConnectivityManagerImpl::OnStationConnected()
 {
+    MATTER_TRACE_INSTANT("Station Connected", "Wifi");
     // Assign an IPv6 link local address to the station interface.
     esp_err_t err = esp_netif_create_ip6_linklocal(esp_netif_get_handle_from_ifkey(ESP32Utils::kDefaultWiFiStationNetifKey));
     if (err != ESP_OK)
@@ -698,6 +727,14 @@ void ConnectivityManagerImpl::OnStationConnected()
 
 void ConnectivityManagerImpl::OnStationDisconnected()
 {
+    MATTER_TRACE_INSTANT("Station Disconnected", "wifi");
+
+#ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
+    MATTER_LOG_METRIC(chip::Tracing::kMetricWifiMinRssi, min_rssi);
+    MATTER_LOG_METRIC(chip::Tracing::kMetricWifiMaxRssi, max_rssi);
+    MATTER_LOG_METRIC(chip::Tracing::kMetricWifiCurrentRssi, current_rssi);
+#endif
+
     // TODO Invoke WARM to perform actions that occur when the WiFi station interface goes down.
 
     // Alert other components of the new state.
@@ -707,6 +744,7 @@ void ConnectivityManagerImpl::OnStationDisconnected()
     PlatformMgr().PostEventOrDie(&event);
     WiFiDiagnosticsDelegate * delegate = GetDiagnosticDataProvider().GetWiFiDiagnosticsDelegate();
     uint16_t reason                    = NetworkCommissioning::ESPWiFiDriver::GetInstance().GetLastDisconnectReason();
+    MATTER_TRACE_INSTANT(to_string(reason), "Wifi_disconnect_reason");
     uint8_t associationFailureCause =
         chip::to_underlying(chip::app::Clusters::WiFiNetworkDiagnostics::AssociationFailureCauseEnum::kUnknown);
 

@@ -39,6 +39,8 @@ public:
 
     bool IsEmptyBuffer();
 
+    uint32_t GetDataSize();
+
 private:
     DiagnosticStorageImpl(uint8_t * buffer, size_t bufferSize);
     DiagnosticStorageImpl();

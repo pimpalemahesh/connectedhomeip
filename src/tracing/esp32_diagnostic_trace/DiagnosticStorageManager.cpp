@@ -154,6 +154,11 @@ bool DiagnosticStorageImpl::IsEmptyBuffer()
 {
     return mEndUserCircularBuffer.DataLength() == 0;
 }
+
+uint32_t DiagnosticStorageImpl::GetDataSize()
+{
+    return mEndUserCircularBuffer.DataLength();
+}
 } // namespace Diagnostics
 } // namespace Tracing
 } // namespace chip

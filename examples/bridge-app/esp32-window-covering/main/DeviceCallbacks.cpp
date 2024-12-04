@@ -39,8 +39,8 @@ using namespace ::chip::System;
 void AppDeviceCallbacks::PostAttributeChangeCallback(EndpointId endpointId, ClusterId clusterId, AttributeId attributeId,
                                                      uint8_t type, uint16_t size, uint8_t * value)
 {
-    ESP_LOGI(TAG, "PostAttributeChangeCallback - Cluster ID: '0x%" PRIx32 "', EndPoint ID: '0x%x', Attribute ID: '0x%" PRIx32 "'",
-             clusterId, endpointId, attributeId);
+    // ESP_LOGI(TAG, "PostAttributeChangeCallback - Cluster ID: '0x%04x', EndPoint ID: '0x%02x', Attribute ID: '0x%04x'", clusterId,
+    //          endpointId, attributeId);
     ESP_LOGI(TAG, "Current free heap: %d\n", heap_caps_get_free_size(MALLOC_CAP_8BIT));
 }
 
@@ -79,7 +79,7 @@ CHIP_ERROR ActionsAttrAccess::ReadEndpointListAttribute(EndpointId endpoint, Att
 
 CHIP_ERROR ActionsAttrAccess::ReadSetupUrlAttribute(EndpointId endpoint, AttributeValueEncoder & aEncoder)
 {
-    static const char SetupUrl[] = "https://example.com";
+    const char SetupUrl[] = "https://example.com";
     return aEncoder.Encode(chip::CharSpan::fromCharString(SetupUrl));
 }
 
@@ -111,7 +111,27 @@ CHIP_ERROR ActionsAttrAccess::Read(const ConcreteReadAttributePath & aPath, Attr
 }
 } // anonymous namespace
 
+
 void MatterActionsPluginServerInitCallback(void)
 {
     AttributeAccessInterfaceRegistry::Instance().Register(&gAttrAccess);
+}
+
+void AppDeviceCallbacksDelegate::OnIPv4ConnectivityEstablished()
+{
+  
+}
+
+void AppDeviceCallbacksDelegate::OnIPv4ConnectivityLost()
+{
+}
+
+void AppDeviceCallbacksDelegate::OnDnssdInitialized()
+{
+    
+}
+// command 0 代表的是 off  命令
+// command 1 代表的是 on   命令
+void SENTOMATTER::send_data_to_matter(int endpoint,uint8_t command)
+{
 }

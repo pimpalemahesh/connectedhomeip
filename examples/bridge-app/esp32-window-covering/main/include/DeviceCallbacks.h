@@ -22,9 +22,14 @@
  * Implementations for the DeviceManager callbacks for this application
  *
  **/
-
+#include <app/util/af-types.h>
 #include <common/CHIPDeviceManager.h>
 #include <common/CommonDeviceCallbacks.h>
+#include <platform/CHIPDeviceLayer.h>
+#include <app/server/Server.h>
+#include <app/clusters/on-off-server/on-off-server.h>
+
+using namespace chip::Dnssd;
 
 class AppDeviceCallbacks : public CommonDeviceCallbacks
 {
@@ -34,4 +39,23 @@ public:
 
 private:
     void OnIdentifyPostAttributeChangeCallback(chip::EndpointId endpointId, chip::AttributeId attributeId, uint8_t * value);
+};
+
+class AppDeviceCallbacksDelegate : public DeviceCallbacksDelegate 
+{
+public:
+    void OnIPv4ConnectivityEstablished() override;
+    void OnIPv4ConnectivityLost() override;
+    void OnDnssdInitialized() override;
+};
+
+class SENTOMATTER : public OnOffServer
+{
+public:
+    int endpoint;
+    int attribute;
+    int command;
+
+void send_data_to_matter(int endpoint,uint8_t command);
+
 };

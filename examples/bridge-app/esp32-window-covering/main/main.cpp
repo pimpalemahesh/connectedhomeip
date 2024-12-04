@@ -68,6 +68,7 @@ using namespace ::chip::DeviceManager;
 using namespace ::chip::Platform;
 using namespace ::chip::Credentials;
 using namespace ::chip::app::Clusters;
+using namespace chip::app::Clusters::WindowCovering;
 
 static AppDeviceCallbacks AppCallback;
 
@@ -78,17 +79,16 @@ static const int kDescriptorAttributeArraySize = 254;
 static EndpointId gCurrentEndpointId;
 static EndpointId gFirstDynamicEndpointId;
 static Device * gDevices[CHIP_DEVICE_CONFIG_DYNAMIC_ENDPOINT_COUNT]; // number of dynamic endpoints count
+static Device gWindows("Windows1", "Office");
 
-// 4 Bridged devices
-static Device gLight1("Light 1", "Office");
-static Device gLight2("Light 2", "Office");
-static Device gLight3("Light 3", "Kitchen");
-static Device gLight4("Light 4", "Den");
+uint8_t restart_timers;
+uint16_t window_data;
+bool window_up = false;
 
 // (taken from chip-devices.xml)
 #define DEVICE_TYPE_BRIDGED_NODE 0x0013
-// (taken from lo-devices.xml)
-#define DEVICE_TYPE_LO_ON_OFF_LIGHT 0x0100
+
+#define DEVICE_TYPE_WINCOVER 0x0202
 
 // (taken from chip-devices.xml)
 #define DEVICE_TYPE_ROOT_NODE 0x0016
@@ -104,9 +104,16 @@ static Device gLight4("Light 4", "Den");
    - Bridged Device Basic Information
 */
 
-// Declare On/Off cluster attributes
-DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(onOffAttrs)
-DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::OnOff::Id, BOOLEAN, 1, 0), /* on/off */
+DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(WindowsAttrs)
+DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::Type::Id, INT8U, 1, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::TargetPositionTiltPercent100ths::Id, INT16U, 2, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::TargetPositionLiftPercent100ths::Id, INT16U, 2, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::ConfigStatus::Id, BITMAP8, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::OperationalStatus::Id, BITMAP8, 1, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::EndProductType::Id, ENUM8, 1, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::Mode::Id, BITMAP8, 1, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::CurrentPositionLiftPercent100ths::Id, INT16U, 2, ATTRIBUTE_MASK_WRITABLE),
+    DECLARE_DYNAMIC_ATTRIBUTE(WindowCovering::Attributes::FeatureMap::Id, BITMAP32, 4, ATTRIBUTE_MASK_WRITABLE),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 // Declare Descriptor cluster attributes
@@ -123,32 +130,24 @@ DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::NodeLabel::
     DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::Reachable::Id, BOOLEAN, 1, 0),              /* Reachable */
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
-// Declare Cluster List for Bridged Light endpoint
-// TODO: It's not clear whether it would be better to get the command lists from
-// the ZAP config on our last fixed endpoint instead.
-constexpr CommandId onOffIncomingCommands[] = {
-    app::Clusters::OnOff::Commands::Off::Id,
-    app::Clusters::OnOff::Commands::On::Id,
-    app::Clusters::OnOff::Commands::Toggle::Id,
-    app::Clusters::OnOff::Commands::OffWithEffect::Id,
-    app::Clusters::OnOff::Commands::OnWithRecallGlobalScene::Id,
-    app::Clusters::OnOff::Commands::OnWithTimedOff::Id,
+constexpr CommandId windoscoverCommands[] = {
+    app::Clusters::WindowCovering::Commands::UpOrOpen::Id,
+    app::Clusters::WindowCovering::Commands::DownOrClose::Id,
+    app::Clusters::WindowCovering::Commands::StopMotion::Id,
+    app::Clusters::WindowCovering::Commands::GoToLiftPercentage::Id,
+    app::Clusters::WindowCovering::Commands::GoToTiltPercentage::Id,
     kInvalidCommandId,
 };
 
-DECLARE_DYNAMIC_CLUSTER_LIST_BEGIN(bridgedLightClusters)
-DECLARE_DYNAMIC_CLUSTER(OnOff::Id, onOffAttrs, ZAP_CLUSTER_MASK(SERVER), onOffIncomingCommands, nullptr),
+DECLARE_DYNAMIC_CLUSTER_LIST_BEGIN(bridgedWindwsClusters)
+DECLARE_DYNAMIC_CLUSTER(WindowCovering::Id, WindowsAttrs, ZAP_CLUSTER_MASK(SERVER), windoscoverCommands, nullptr),
     DECLARE_DYNAMIC_CLUSTER(Descriptor::Id, descriptorAttrs, ZAP_CLUSTER_MASK(SERVER), nullptr, nullptr),
     DECLARE_DYNAMIC_CLUSTER(BridgedDeviceBasicInformation::Id, bridgedDeviceBasicAttrs, ZAP_CLUSTER_MASK(SERVER), nullptr,
                             nullptr) DECLARE_DYNAMIC_CLUSTER_LIST_END;
 
 // Declare Bridged Light endpoint
-DECLARE_DYNAMIC_ENDPOINT(bridgedLightEndpoint, bridgedLightClusters);
-
-DataVersion gLight1DataVersions[ArraySize(bridgedLightClusters)];
-DataVersion gLight2DataVersions[ArraySize(bridgedLightClusters)];
-DataVersion gLight3DataVersions[ArraySize(bridgedLightClusters)];
-DataVersion gLight4DataVersions[ArraySize(bridgedLightClusters)];
+DECLARE_DYNAMIC_ENDPOINT(bridgedWindowsEndpoint, bridgedWindwsClusters);
+DataVersion gWindowsVersions[ArraySize(bridgedWindwsClusters)];
 
 /* REVISION definitions:
  */
@@ -156,7 +155,7 @@ DataVersion gLight4DataVersions[ArraySize(bridgedLightClusters)];
 #define ZCL_DESCRIPTOR_CLUSTER_REVISION (1u)
 #define ZCL_BRIDGED_DEVICE_BASIC_INFORMATION_CLUSTER_REVISION (2u)
 #define ZCL_FIXED_LABEL_CLUSTER_REVISION (1u)
-#define ZCL_ON_OFF_CLUSTER_REVISION (4u)
+#define ZCL_WINDOVER_CLUSTER_VERSION (4u)
 
 int AddDeviceEndpoint(Device * dev, EmberAfEndpointType * ep, const Span<const EmberAfDeviceType> & deviceTypeList,
                       const Span<DataVersion> & dataVersionStorage, chip::EndpointId parentEndpointId)
@@ -213,6 +212,114 @@ CHIP_ERROR RemoveDeviceEndpoint(Device * dev)
     return CHIP_ERROR_INTERNAL;
 }
 
+/**
+ * HandleReadWindowsAttribute
+ */
+Protocols::InteractionModel::Status HandleReadWindowsAttribute(Device * dev, chip::AttributeId attributeId, uint8_t * buffer,
+                                                               uint16_t maxReadLength)
+{
+    ChipLogProgress(DeviceLayer, "HandleReadWindowsAttribute: attrId=%" PRIu32 ", maxReadLength=%u", attributeId, maxReadLength);
+
+    uint16_t rev = 0;
+    if ((attributeId == WindowCovering::Attributes::TargetPositionTiltPercent100ths::Id))
+    {
+        printf("TargetPositionTiltPercent100ths%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        // memcpy(buffer, &rev, sizeof(rev));
+    }
+    else if (attributeId == WindowCovering::Attributes::Type::Id)
+    {
+        dev->WindowsCoverOn();
+        printf("Type%d\r\n", *buffer);
+        uint8_t ret = 0;
+        memcpy(buffer, &ret, sizeof(ret));
+    }
+    else if (attributeId == WindowCovering::Attributes::ConfigStatus::Id)
+    {
+        printf("ConfigStatus%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        *buffer = 1;
+    }
+    else if (attributeId == WindowCovering::Attributes::OperationalStatus::Id)
+    {
+        printf("OperationalStatus%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        uint8_t ret = 0;
+        memcpy(buffer, &ret, sizeof(ret));
+    }
+    else if (attributeId == WindowCovering::Attributes::EndProductType::Id)
+    {
+        printf("EndProductType%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        uint8_t ret = 0;
+        memcpy(buffer, &ret, sizeof(ret));
+    }
+    else if (attributeId == WindowCovering::Attributes::Mode::Id)
+    {
+        printf("Mode%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        uint8_t ret = 1;
+        memcpy(buffer, &ret, sizeof(ret));
+    }
+    else if (attributeId == WindowCovering::Attributes::TargetPositionLiftPercent100ths::Id)
+    {
+
+        dev->WindowsCoverOn();
+        uint16_t Lift_P = dev->GetCurrentPositionLiftPercent100ths();
+        memcpy(buffer, &Lift_P, sizeof(Lift_P));
+    }
+    else if (attributeId == WindowCovering::Attributes::CurrentPositionLiftPercent100ths::Id)
+    {
+        printf("CurrentPositionLiftPercent100ths%d\r\n", *buffer);
+        dev->WindowsCoverOn();
+        uint16_t Lift_V = dev->GetCurrentPositionLiftPercent100ths();
+        memcpy(buffer, &Lift_V, sizeof(Lift_V));
+    }
+    else if (attributeId == WindowCovering::Attributes::FeatureMap::Id)
+    {
+        rev = 31;
+        memcpy(buffer, &rev, sizeof(rev));
+    }
+    else if ((attributeId == WindowCovering::Attributes::ClusterRevision::Id))
+    {
+        rev = ZCL_WINDOVER_CLUSTER_VERSION;
+        memcpy(buffer, &rev, sizeof(rev));
+    }
+    else
+    {
+        return Protocols::InteractionModel::Status::Failure;
+    }
+    return Protocols::InteractionModel::Status::Success;
+}
+/**
+ * HandleWriteWindowsAttribute
+ */
+Protocols::InteractionModel::Status HandleWriteWindowsAttribute(Device * dev, chip::AttributeId attributeId, uint8_t * buffer)
+{
+    ChipLogProgress(DeviceLayer, "Windows write----------------------: attrId=%" PRIu32, attributeId);
+    if (attributeId == WindowCovering::Attributes::TargetPositionLiftPercent100ths::Id ||
+        attributeId == WindowCovering::Attributes::TargetPositionTiltPercent100ths::Id ||
+        attributeId == WindowCovering::Attributes::CurrentPositionLiftPercent100ths::Id)
+    {
+
+        uint16_t target = *(buffer + 1);
+        target <<= 8;
+        target |= *buffer;
+        printf("recv:%d\r\n", target);
+        dev->GoToLiftPercentage100ths(target);
+        window_data = target;
+        if (!window_up)
+            window_up = true;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    else if (attributeId == WindowCovering::Attributes::OperationalStatus::Id)
+    {
+        return Protocols::InteractionModel::Status::Success;
+    }
+    else
+        return Protocols::InteractionModel::Status::Failure;
+}
+
 Protocols::InteractionModel::Status HandleReadBridgedDeviceBasicAttribute(Device * dev, chip::AttributeId attributeId,
                                                                           uint8_t * buffer, uint16_t maxReadLength)
 {
@@ -242,38 +349,6 @@ Protocols::InteractionModel::Status HandleReadBridgedDeviceBasicAttribute(Device
     return Protocols::InteractionModel::Status::Success;
 }
 
-Protocols::InteractionModel::Status HandleReadOnOffAttribute(Device * dev, chip::AttributeId attributeId, uint8_t * buffer,
-                                                             uint16_t maxReadLength)
-{
-    ChipLogProgress(DeviceLayer, "HandleReadOnOffAttribute: attrId=%" PRIu32 ", maxReadLength=%u", attributeId, maxReadLength);
-
-    if ((attributeId == OnOff::Attributes::OnOff::Id) && (maxReadLength == 1))
-    {
-        *buffer = dev->IsOn() ? 1 : 0;
-    }
-    else if ((attributeId == OnOff::Attributes::ClusterRevision::Id) && (maxReadLength == 2))
-    {
-        uint16_t rev = ZCL_ON_OFF_CLUSTER_REVISION;
-        memcpy(buffer, &rev, sizeof(rev));
-    }
-    else
-    {
-        return Protocols::InteractionModel::Status::Failure;
-    }
-
-    return Protocols::InteractionModel::Status::Success;
-}
-
-Protocols::InteractionModel::Status HandleWriteOnOffAttribute(Device * dev, chip::AttributeId attributeId, uint8_t * buffer)
-{
-    ChipLogProgress(DeviceLayer, "HandleWriteOnOffAttribute: attrId=%" PRIu32, attributeId);
-
-    VerifyOrReturnError((attributeId == OnOff::Attributes::OnOff::Id) && dev->IsReachable(),
-                        Protocols::InteractionModel::Status::Failure);
-    dev->SetOnOff(*buffer == 1);
-    return Protocols::InteractionModel::Status::Success;
-}
-
 Protocols::InteractionModel::Status emberAfExternalAttributeReadCallback(EndpointId endpoint, ClusterId clusterId,
                                                                          const EmberAfAttributeMetadata * attributeMetadata,
                                                                          uint8_t * buffer, uint16_t maxReadLength)
@@ -288,9 +363,9 @@ Protocols::InteractionModel::Status emberAfExternalAttributeReadCallback(Endpoin
         {
             return HandleReadBridgedDeviceBasicAttribute(dev, attributeMetadata->attributeId, buffer, maxReadLength);
         }
-        else if (clusterId == OnOff::Id)
+        else if (clusterId == WindowCovering::Id)
         {
-            return HandleReadOnOffAttribute(dev, attributeMetadata->attributeId, buffer, maxReadLength);
+            return HandleReadWindowsAttribute(dev, attributeMetadata->attributeId, buffer, maxReadLength);
         }
     }
 
@@ -307,9 +382,9 @@ Protocols::InteractionModel::Status emberAfExternalAttributeWriteCallback(Endpoi
     {
         Device * dev = gDevices[endpointIndex];
 
-        if ((dev->IsReachable()) && (clusterId == OnOff::Id))
+        if ((dev->IsReachable()) && (clusterId == WindowCovering::Id))
         {
-            return HandleWriteOnOffAttribute(dev, attributeMetadata->attributeId, buffer);
+            return HandleWriteWindowsAttribute(dev, attributeMetadata->attributeId, buffer);
         }
     }
 
@@ -338,9 +413,9 @@ void HandleDeviceStatusChanged(Device * dev, Device::Changed_t itemChangedMask)
         ScheduleReportingCallback(dev, BridgedDeviceBasicInformation::Id, BridgedDeviceBasicInformation::Attributes::Reachable::Id);
     }
 
-    if (itemChangedMask & Device::kChanged_State)
+    if (itemChangedMask & Device::kChanged_Windows)
     {
-        ScheduleReportingCallback(dev, OnOff::Id, OnOff::Attributes::OnOff::Id);
+        ScheduleReportingCallback(dev, WindowCovering::Id, WindowCovering::Attributes::CurrentPositionLiftPercent100ths::Id);
     }
 
     if (itemChangedMask & Device::kChanged_Name)
@@ -359,9 +434,8 @@ bool emberAfActionsClusterInstantActionCallback(app::CommandHandler * commandObj
 
 const EmberAfDeviceType gRootDeviceTypes[]          = { { DEVICE_TYPE_ROOT_NODE, DEVICE_VERSION_DEFAULT } };
 const EmberAfDeviceType gAggregateNodeDeviceTypes[] = { { DEVICE_TYPE_BRIDGE, DEVICE_VERSION_DEFAULT } };
-
-const EmberAfDeviceType gBridgedOnOffDeviceTypes[] = { { DEVICE_TYPE_LO_ON_OFF_LIGHT, DEVICE_VERSION_DEFAULT },
-                                                       { DEVICE_TYPE_BRIDGED_NODE, DEVICE_VERSION_DEFAULT } };
+const EmberAfDeviceType gBridgedwindoscoverTypes[]  = { { DEVICE_TYPE_WINCOVER, DEVICE_VERSION_DEFAULT },
+                                                        { DEVICE_TYPE_BRIDGED_NODE, DEVICE_VERSION_DEFAULT } };
 
 static void InitServer(intptr_t context)
 {
@@ -383,24 +457,9 @@ static void InitServer(intptr_t context)
     emberAfSetDeviceTypeList(0, Span<const EmberAfDeviceType>(gRootDeviceTypes));
     emberAfSetDeviceTypeList(1, Span<const EmberAfDeviceType>(gAggregateNodeDeviceTypes));
 
-    // Add lights 1..3 --> will be mapped to ZCL endpoints 3, 4, 5
-    AddDeviceEndpoint(&gLight1, &bridgedLightEndpoint, Span<const EmberAfDeviceType>(gBridgedOnOffDeviceTypes),
-                      Span<DataVersion>(gLight1DataVersions), 1);
-    AddDeviceEndpoint(&gLight2, &bridgedLightEndpoint, Span<const EmberAfDeviceType>(gBridgedOnOffDeviceTypes),
-                      Span<DataVersion>(gLight2DataVersions), 1);
-    AddDeviceEndpoint(&gLight3, &bridgedLightEndpoint, Span<const EmberAfDeviceType>(gBridgedOnOffDeviceTypes),
-                      Span<DataVersion>(gLight3DataVersions), 1);
-
-    // Remove Light 2 -- Lights 1 & 3 will remain mapped to endpoints 3 & 5
-    RemoveDeviceEndpoint(&gLight2);
-
-    // Add Light 4 -- > will be mapped to ZCL endpoint 6
-    AddDeviceEndpoint(&gLight4, &bridgedLightEndpoint, Span<const EmberAfDeviceType>(gBridgedOnOffDeviceTypes),
-                      Span<DataVersion>(gLight4DataVersions), 1);
-
     // Re-add Light 2 -- > will be mapped to ZCL endpoint 7
-    AddDeviceEndpoint(&gLight2, &bridgedLightEndpoint, Span<const EmberAfDeviceType>(gBridgedOnOffDeviceTypes),
-                      Span<DataVersion>(gLight2DataVersions), 1);
+    AddDeviceEndpoint(&gWindows, &bridgedWindowsEndpoint, Span<const EmberAfDeviceType>(gBridgedwindoscoverTypes),
+                      Span<DataVersion>(gWindowsVersions), 1);
 }
 
 extern "C" void app_main()
@@ -433,16 +492,8 @@ extern "C" void app_main()
     }
 #endif
 
-    gLight1.SetReachable(true);
-    gLight2.SetReachable(true);
-    gLight3.SetReachable(true);
-    gLight4.SetReachable(true);
-
-    // Whenever bridged device changes its state
-    gLight1.SetChangeCallback(&HandleDeviceStatusChanged);
-    gLight2.SetChangeCallback(&HandleDeviceStatusChanged);
-    gLight3.SetChangeCallback(&HandleDeviceStatusChanged);
-    gLight4.SetChangeCallback(&HandleDeviceStatusChanged);
+    gWindows.SetReachable(true);
+    gWindows.SetChangeCallback(&HandleDeviceStatusChanged);
 
     DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
 

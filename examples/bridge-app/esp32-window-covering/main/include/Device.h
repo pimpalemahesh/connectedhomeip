@@ -20,8 +20,8 @@
 #include <functional>
 #include <stdbool.h>
 #include <stdint.h>
-
-class Device
+#include <string.h>
+class Device  // 设备基础类
 {
 public:
     static const int kDeviceNameSize     = 32;
@@ -39,17 +39,24 @@ public:
         kChanged_State     = 0x02,
         kChanged_Location  = 0x04,
         kChanged_Name      = 0x08,
+        kChanged_Windows   = 0x20,
     } Changed;
 
     Device(const char * szDeviceName, const char * szLocation);
 
     bool IsOn() const;
+    bool WindowsCoverOn() const;
+
+
     bool IsReachable() const;
-    void SetOnOff(bool aOn);
     void SetReachable(bool aReachable);
     void SetName(const char * szDeviceName);
     void SetLocation(const char * szLocation);
-    inline void SetEndpointId(chip::EndpointId id) { mEndpointId = id; };
+    // 窗帘
+    uint16_t GoToLiftPercentage100ths(uint16_t Lift);
+    uint16_t GetCurrentPositionLiftPercent100ths(); 
+
+    inline void SetEndpointId(chip::EndpointId id) { mEndpointId = id; }; // 设置设备的端点ID
     inline chip::EndpointId GetEndpointId() { return mEndpointId; };
     inline char * GetName() { return mName; };
     inline char * GetLocation() { return mLocation; };
@@ -60,6 +67,8 @@ public:
 private:
     State_t mState;
     bool mReachable;
+    uint16_t LiftPercentage;
+
     char mName[kDeviceNameSize];
     char mLocation[kDeviceLocationSize];
     chip::EndpointId mEndpointId;

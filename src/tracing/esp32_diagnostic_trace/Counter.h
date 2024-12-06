@@ -25,7 +25,6 @@
 #include <lib/support/CHIPMemString.h>
 #include <map>
 #include <string.h>
-#include <map>
 
 namespace chip {
 namespace Tracing {

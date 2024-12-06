@@ -59,10 +59,14 @@ public:
     CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType metricOuterContainer;
+        err = writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_Structure, metricOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to Start outer metric container: %s", ErrorStr(err)));
         chip::TLV::TLVType metricContainer;
         err = writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::METRIC), chip::TLV::kTLVType_Structure, metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for metric : %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to Start inner metric container: %s", ErrorStr(err)));
 
         // TIMESTAMP
         err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
@@ -82,7 +86,13 @@ public:
         ChipLogProgress(DeviceLayer, "Metric Value written to storage successfully. label: %s\n", label_);
         err = writer.EndContainer(metricContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for metric : %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to end inner TLV container for Metric : %s", ErrorStr(err)));
+        err = writer.EndContainer(metricOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end outer TLV container for Metric : %s", ErrorStr(err)));
+        err = writer.Finalize();
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to Finalize writer : %s", ErrorStr(err)));
+        ReturnErrorOnFailure(writer.Finalize());
         return err;
     }
 
@@ -106,15 +116,18 @@ public:
     CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType traceOuterContainer;
+        err = writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_Structure, traceOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to Start outer trace container: %s", ErrorStr(err)));
         chip::TLV::TLVType traceContainer;
         err = writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TRACE), chip::TLV::kTLVType_Structure, traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for Trace: %s", ErrorStr(err)));
-
+                            ChipLogError(DeviceLayer, "Failed to Start inner trace container: %s", ErrorStr(err)));
         // TIMESTAMP
         err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for METRIC : %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to write TIMESTAMP for TRACE : %s", ErrorStr(err)));
 
         // GROUP
         err = writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::GROUP), group_);
@@ -129,7 +142,13 @@ public:
         ChipLogProgress(DeviceLayer, "Trace Value written to storage successfully. label: %s value: %s\n", label_, group_);
         err = writer.EndContainer(traceContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for Trace : %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to end inner TLV container for Trace : %s", ErrorStr(err)));
+        err = writer.EndContainer(traceOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end outer TLV container for Trace : %s", ErrorStr(err)));
+        err = writer.Finalize();
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to Finalize writer : %s", ErrorStr(err)));
+        ReturnErrorOnFailure(writer.Finalize());
         return err;
     }
 
@@ -153,11 +172,15 @@ public:
     CHIP_ERROR Encode(chip::TLV::CircularTLVWriter & writer) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
+        chip::TLV::TLVType counterOuterContainer;
+        err = writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_Structure, counterOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to Start outer counter container: %s", ErrorStr(err)));
         chip::TLV::TLVType counterContainer;
         err =
             writer.StartContainer(chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER), chip::TLV::kTLVType_Structure, counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to start TLV container for Counter: %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to Start inner counter container: %s", ErrorStr(err)));
 
         // TIMESTAMP
         err = writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_);
@@ -177,7 +200,12 @@ public:
         ChipLogProgress(DeviceLayer, "Counter Value written to storage successfully  label: %s count: %ld\n", label_, count_);
         err = writer.EndContainer(counterContainer);
         VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                            ChipLogError(DeviceLayer, "Failed to end TLV container for counter : %s", ErrorStr(err)));
+                            ChipLogError(DeviceLayer, "Failed to end inner TLV container for Counter : %s", ErrorStr(err)));
+        err = writer.EndContainer(counterOuterContainer);
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err,
+                            ChipLogError(DeviceLayer, "Failed to end outer TLV container for Counter : %s", ErrorStr(err)));
+        err = writer.Finalize();
+        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to Finalize writer : %s", ErrorStr(err)));
         return err;
     }
 
@@ -213,6 +241,10 @@ public:
      * @return CHIP_ERROR Returns CHIP_NO_ERROR on success, or an appropriate error code on failure.
      */
     virtual CHIP_ERROR Retrieve(MutableByteSpan & payload) = 0;
+
+    virtual bool IsEmptyBuffer() = 0;
+
+    virtual uint32_t GetDataSize() = 0;
 };
 
 } // namespace Diagnostics

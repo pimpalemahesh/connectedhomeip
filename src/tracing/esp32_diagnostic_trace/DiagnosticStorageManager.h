@@ -22,6 +22,8 @@
 #include <lib/support/CHIPMem.h>
 #include <tracing/esp32_diagnostic_trace/Diagnostics.h>
 
+#define TLV_CLOSING_BYTES 4
+
 namespace chip {
 namespace Tracing {
 namespace Diagnostics {
@@ -89,7 +91,8 @@ public:
                      reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::TRACE) ||
                      reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER)))
                 {
-                    if ((reader.GetLengthRead() - writer.GetLengthWritten()) < (writer.GetRemainingFreeLength()))
+                    if ((reader.GetLengthRead() - writer.GetLengthWritten()) <
+                        ((writer.GetRemainingFreeLength() + TLV_CLOSING_BYTES)))
                     {
                         err = writer.CopyElement(reader);
                         if (err == CHIP_ERROR_BUFFER_TOO_SMALL)

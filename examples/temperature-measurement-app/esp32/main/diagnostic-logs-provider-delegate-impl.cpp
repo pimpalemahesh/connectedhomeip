@@ -30,7 +30,7 @@ LogProvider LogProvider::sInstance;
 LogProvider::CrashLogContext LogProvider::sCrashLogContext;
 
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
-static uint32_t sIntentSize = CONFIG_END_USER_BUFFER_SIZE;
+static uint32_t read_entries = 0;
 #endif
 
 namespace {
@@ -120,7 +120,7 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
     case IntentEnum::kEndUserSupport: {
 #if CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
         CircularDiagnosticBuffer & diagnosticStorage = CircularDiagnosticBuffer::GetInstance();
-        MutableByteSpan endUserSupportSpan(endUserBuffer, CONFIG_END_USER_BUFFER_SIZE);
+        MutableByteSpan endUserSupportSpan(endUserBuffer, 2048);
 
         if (diagnosticStorage.IsEmptyBuffer())
         {
@@ -128,13 +128,12 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
             return CHIP_ERROR_NOT_FOUND;
         }
         // Retrieve data from the diagnostic storage
-        CHIP_ERROR err = diagnosticStorage.Retrieve(endUserSupportSpan);
+        CHIP_ERROR err = diagnosticStorage.Retrieve(endUserSupportSpan, read_entries);
         if (err != CHIP_NO_ERROR)
         {
             ChipLogError(DeviceLayer, "Failed to retrieve data: %s", chip::ErrorStr(err));
             return err;
         }
-        sIntentSize = endUserSupportSpan.size();
         // Now, assign the span to the EndUserSupport object or whatever is required
         context->EndUserSupport.span = endUserSupportSpan;
 #else
@@ -318,6 +317,10 @@ CHIP_ERROR LogProvider::EndLogCollection(LogSessionHandle sessionHandle)
     CleanupLogContextForIntent(context);
     Platform::MemoryFree(context);
     mSessionContextMap.erase(sessionHandle);
+    CHIP_ERROR err = CircularDiagnosticBuffer::GetInstance().ClearReadMemory(read_entries);
+    if (err != CHIP_NO_ERROR) {
+        printf("**************************Successfully cleared memory\n******************************");
+    }
 
     return CHIP_NO_ERROR;
 }

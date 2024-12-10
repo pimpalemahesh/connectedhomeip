@@ -56,9 +56,10 @@ public:
         return err;
     }
 
-    CHIP_ERROR Retrieve(MutableByteSpan & span) override
+    CHIP_ERROR Retrieve(MutableByteSpan & span, uint32_t & read_entries) override
     {
         CHIP_ERROR err = CHIP_NO_ERROR;
+        uint32_t entries = 0;
         chip::TLV::TLVReader reader;
         reader.Init(*this);
 
@@ -91,10 +92,10 @@ public:
                      reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::TRACE) ||
                      reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER)))
                 {
-                    if ((reader.GetLengthRead() - writer.GetLengthWritten()) <
-                        ((writer.GetRemainingFreeLength() + TLV_CLOSING_BYTES)))
+                    if ((reader.GetLengthRead() - writer.GetLengthWritten()) < (writer.GetRemainingFreeLength()))
                     {
                         err = writer.CopyElement(reader);
+                        entries++;
                         if (err == CHIP_ERROR_BUFFER_TOO_SMALL)
                         {
                             ChipLogProgress(DeviceLayer, "Buffer too small to occupy current element");
@@ -129,6 +130,7 @@ public:
         err = writer.Finalize();
         VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
         span.reduce_size(writer.GetLengthWritten());
+        read_entries = entries;
         ChipLogProgress(DeviceLayer, "---------------Total written bytes successfully : %ld----------------\n",
                         writer.GetLengthWritten());
         ChipLogProgress(DeviceLayer, "Retrieval successful");
@@ -138,6 +140,19 @@ public:
     bool IsEmptyBuffer() override { return DataLength() == 0; }
 
     uint32_t GetDataSize() override { return DataLength(); }
+
+    CHIP_ERROR ClearReadMemory(uint32_t entries)
+    {
+        CHIP_ERROR err = CHIP_NO_ERROR;
+        while(entries--) {
+            err = EvictHead();
+            if (err != CHIP_NO_ERROR) {
+                printf("Failed to evicthead");
+                break;
+            }
+        }
+        return err;
+    }
 
 private:
     CircularDiagnosticBuffer() : chip::TLV::TLVCircularBuffer(nullptr, 0) {}

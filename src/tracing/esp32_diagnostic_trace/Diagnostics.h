@@ -240,7 +240,7 @@ public:
      *                 diagnostic data will be stored.
      * @return CHIP_ERROR Returns CHIP_NO_ERROR on success, or an appropriate error code on failure.
      */
-    virtual CHIP_ERROR Retrieve(MutableByteSpan & payload) = 0;
+    virtual CHIP_ERROR Retrieve(MutableByteSpan & payload, uint32_t & read_entries) = 0;
 
     virtual bool IsEmptyBuffer() = 0;
 

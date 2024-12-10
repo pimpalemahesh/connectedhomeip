@@ -45,7 +45,7 @@ uint32_t ESPDiagnosticCounter::GetInstanceCount(const char * label) const
 void ESPDiagnosticCounter::ReportMetrics(const char * label, DiagnosticStorageInterface & mStorageInstance)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
-    Counter counter(label, GetInstanceCount(label), esp_log_timestamp());
+    Diagnostic<uint32_t> counter(label, GetInstanceCount(label), esp_log_timestamp());
     err = mStorageInstance.Store(counter);
     VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Counter diagnostic data"));
 }

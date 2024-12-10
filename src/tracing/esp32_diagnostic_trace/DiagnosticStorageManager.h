@@ -22,7 +22,7 @@
 #include <lib/support/CHIPMem.h>
 #include <tracing/esp32_diagnostic_trace/Diagnostics.h>
 
-#define TLV_CLOSING_BYTES 4
+#define TLV_CLOSING_BYTE 1
 
 namespace chip {
 namespace Tracing {
@@ -65,9 +65,8 @@ public:
         chip::TLV::TLVWriter writer;
         writer.Init(span.data(), span.size());
 
-        chip::TLV::TLVType outWriterContainer;
-        err = writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_List, outWriterContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to start container"));
+        chip::TLV::TLVType outWriterContainer = chip::TLV::kTLVType_NotSpecified;
+        ReturnErrorOnFailure(writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_List, outWriterContainer));
 
         while (CHIP_NO_ERROR == reader.Next())
         {
@@ -76,47 +75,21 @@ public:
 
             if (reader.GetType() == chip::TLV::kTLVType_Structure && reader.GetTag() == chip::TLV::AnonymousTag())
             {
-                chip::TLV::TLVType outerReaderContainer;
-                err = reader.EnterContainer(outerReaderContainer);
-                VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                                    ChipLogError(DeviceLayer, "Failed to enter outer TLV container: %s", ErrorStr(err)));
-
-                err = reader.Next();
-                VerifyOrReturnError(
-                    err == CHIP_NO_ERROR, err,
-                    ChipLogError(DeviceLayer, "Failed to read next TLV element in outer container: %s", ErrorStr(err)));
-
-                if ((reader.GetType() == chip::TLV::kTLVType_Structure) &&
-                    (reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::METRIC) ||
-                     reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::TRACE) ||
-                     reader.GetTag() == chip::TLV::ContextTag(DIAGNOSTICS_TAG::COUNTER)))
+                if ((reader.GetLengthRead() - writer.GetLengthWritten()) < ((writer.GetRemainingFreeLength() + TLV_CLOSING_BYTE)))
                 {
-                    if ((reader.GetLengthRead() - writer.GetLengthWritten()) <
-                        ((writer.GetRemainingFreeLength() + TLV_CLOSING_BYTES)))
+                    err = writer.CopyElement(reader);
+                    if (err == CHIP_ERROR_BUFFER_TOO_SMALL)
                     {
-                        err = writer.CopyElement(reader);
-                        if (err == CHIP_ERROR_BUFFER_TOO_SMALL)
-                        {
-                            ChipLogProgress(DeviceLayer, "Buffer too small to occupy current element");
-                            break;
-                        }
-                        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
-                    }
-                    else
-                    {
-                        ChipLogProgress(DeviceLayer, "Buffer too small to occupy current TLV");
+                        ChipLogProgress(DeviceLayer, "Buffer too small to occupy current element");
                         break;
                     }
                 }
                 else
                 {
-                    ChipLogError(DeviceLayer, "Unexpected TLV element in outer container");
-                    reader.ExitContainer(outerReaderContainer);
-                    return CHIP_ERROR_WRONG_TLV_TYPE;
+                    ChipLogProgress(DeviceLayer, "Buffer too small to occupy current TLV");
+                    break;
                 }
-                err = reader.ExitContainer(outerReaderContainer);
-                VerifyOrReturnError(err == CHIP_NO_ERROR, err,
-                                    ChipLogError(DeviceLayer, "Failed to exit outer TLV container: %s", ErrorStr(err)));
+                VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to copy TLV element"));
             }
             else
             {
@@ -124,14 +97,10 @@ public:
             }
         }
 
-        err = writer.EndContainer(outWriterContainer);
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to close outer container"));
-        err = writer.Finalize();
-        VerifyOrReturnError(err == CHIP_NO_ERROR, err, ChipLogError(DeviceLayer, "Failed to finalize TLV writing"));
+        ReturnErrorOnFailure(writer.EndContainer(outWriterContainer));
+        ReturnErrorOnFailure(writer.Finalize());
         span.reduce_size(writer.GetLengthWritten());
-        ChipLogProgress(DeviceLayer, "---------------Total written bytes successfully : %ld----------------\n",
-                        writer.GetLengthWritten());
-        ChipLogProgress(DeviceLayer, "Retrieval successful");
+        ChipLogProgress(DeviceLayer, "---------------Total Retrieved bytes : %ld----------------\n", writer.GetLengthWritten());
         return CHIP_NO_ERROR;
     }
 

@@ -18,8 +18,6 @@
 
 #pragma once
 
-#include <lib/core/CHIPError.h>
-#include <lib/support/CHIPMem.h>
 #include <tracing/esp32_diagnostic_trace/Diagnostics.h>
 
 #define TLV_CLOSING_BYTE 1

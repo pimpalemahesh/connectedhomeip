@@ -17,21 +17,13 @@
  */
 
 #pragma once
-#include <lib/core/CHIPError.h>
+
 #include <lib/core/TLVCircularBuffer.h>
-#include <lib/support/Span.h>
 
 namespace chip {
 namespace Tracing {
 
 namespace Diagnostics {
-
-enum class DIAGNOSTICS_TAG
-{
-    LABEL = 0,
-    VALUE,
-    TIMESTAMP
-};
 
 /**
  * @class DiagnosticEntry
@@ -68,18 +60,15 @@ public:
         chip::TLV::TLVType DiagnosticOuterContainer = chip::TLV::kTLVType_NotSpecified;
         ReturnErrorOnFailure(
             writer.StartContainer(chip::TLV::AnonymousTag(), chip::TLV::kTLVType_Structure, DiagnosticOuterContainer));
-        // TIMESTAMP
-        ReturnErrorOnFailure(writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::TIMESTAMP), timestamp_));
-        // LABEL
-        ReturnErrorOnFailure(writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::LABEL), label_));
-        // VALUE
+        ReturnErrorOnFailure(writer.Put(chip::TLV::ContextTag(0), timestamp_));
+        ReturnErrorOnFailure(writer.PutString(chip::TLV::ContextTag(1), label_));
         if constexpr (std::is_same_v<T, const char *>)
         {
-            ReturnErrorOnFailure(writer.PutString(chip::TLV::ContextTag(DIAGNOSTICS_TAG::VALUE), value_));
+            ReturnErrorOnFailure(writer.PutString(chip::TLV::ContextTag(2), value_));
         }
         else
         {
-            ReturnErrorOnFailure(writer.Put(chip::TLV::ContextTag(DIAGNOSTICS_TAG::VALUE), value_));
+            ReturnErrorOnFailure(writer.Put(chip::TLV::ContextTag(2), value_));
         }
         ReturnErrorOnFailure(writer.EndContainer(DiagnosticOuterContainer));
         ReturnErrorOnFailure(writer.Finalize());
@@ -120,8 +109,16 @@ public:
      */
     virtual CHIP_ERROR Retrieve(MutableByteSpan & payload) = 0;
 
+    /**
+     * @brief Checks if the storage buffer is empty.
+     * @return bool true if the buffer contains no stored diagnostic data, otherwise false.
+     */
     virtual bool IsEmptyBuffer() = 0;
 
+    /**
+     * @brief Retrieves the size of the data currently stored in the buffer.
+     * @return uint32_t The size (in bytes) of the stored diagnostic data.
+     */
     virtual uint32_t GetDataSize() = 0;
 };
 

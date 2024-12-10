@@ -16,8 +16,8 @@
  *    limitations under the License.
  */
 
-#include <string.h>
 #include <tracing/esp32_diagnostic_trace/Counter.h>
+#include <esp_log.h>
 
 namespace chip {
 namespace Tracing {
@@ -25,7 +25,7 @@ namespace Diagnostics {
 
 std::map<const char *, uint32_t> ESPDiagnosticCounter::mCounterList;
 
-void ESPDiagnosticCounter::CountInit(const char * label)
+void ESPDiagnosticCounter::IncreaseCount(const char * label)
 {
     if (mCounterList.find(label) != mCounterList.end())
     {

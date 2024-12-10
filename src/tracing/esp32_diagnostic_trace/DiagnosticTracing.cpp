@@ -19,13 +19,9 @@
 
 #include <algorithm>
 #include <esp_err.h>
-#include <esp_heap_caps.h>
 #include <esp_log.h>
-#include <memory>
-#include <tracing/backend.h>
 #include <tracing/esp32_diagnostic_trace/Counter.h>
 #include <tracing/esp32_diagnostic_trace/DiagnosticTracing.h>
-#include <tracing/metric_event.h>
 
 namespace chip {
 namespace Tracing {
@@ -76,14 +72,11 @@ HashValue gPermitList[kPermitListMaxSize] = { MurmurHash("PASESession"),
                                               MurmurHash("GeneralCommissioning"),
                                               MurmurHash("OperationalCredentials"),
                                               MurmurHash("CASEServer"),
-                                              MurmurHash("BLE"),
-                                              MurmurHash("BLE_Error"),
-                                              MurmurHash("Wifi"),
-                                              MurmurHash("Wifi_Error"),
                                               MurmurHash("Fabric") }; // namespace
 
-bool IsPermitted(HashValue hashValue)
+bool IsPermitted(const char * str)
 {
+    HashValue hashValue = MurmurHash(str);
     for (HashValue permitted : gPermitList)
     {
         if (permitted == 0)
@@ -150,12 +143,18 @@ void ESP32Diagnostics::TraceCounter(const char * label)
 
 void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
-    StoreDiagnostics(label, group);
+    if (IsPermitted(group))
+    {
+        StoreDiagnostics(label, group);
+    }
 }
 
 void ESP32Diagnostics::TraceEnd(const char * label, const char * group)
 {
-    StoreDiagnostics(label, group);
+    if (IsPermitted(group))
+    {
+        StoreDiagnostics(label, group);
+    }
 }
 
 void ESP32Diagnostics::TraceInstant(const char * label, const char * group)
@@ -165,14 +164,8 @@ void ESP32Diagnostics::TraceInstant(const char * label, const char * group)
 
 void ESP32Diagnostics::StoreDiagnostics(const char * label, const char * group)
 {
-    CHIP_ERROR err      = CHIP_NO_ERROR;
-    HashValue hashValue = MurmurHash(group);
-    if (IsPermitted(hashValue))
-    {
-        Diagnostic<const char *> trace(label, group, esp_log_timestamp());
-        err = mStorageInstance.Store(trace);
-        VerifyOrReturn(err == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Trace Diagnostic data"));
-    }
+    Diagnostic<const char *> trace(label, group, esp_log_timestamp());
+    VerifyOrReturn(mStorageInstance.Store(trace) == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Trace Diagnostic data"));
 }
 
 } // namespace Diagnostics

@@ -27,12 +27,6 @@ namespace chip {
 namespace Tracing {
 namespace Diagnostics {
 
-#define LOG_HEAP_INFO(label, group, entry_exit)                                                                                    \
-    do                                                                                                                             \
-    {                                                                                                                              \
-        ESP_DIAG_EVENT("MTR_TRC", "%s - %s - %s", entry_exit, label, group);                                                       \
-    } while (0)
-
 constexpr size_t kPermitListMaxSize = CONFIG_MAX_PERMIT_LIST_SIZE;
 using HashValue                     = uint32_t;
 
@@ -72,7 +66,8 @@ HashValue gPermitList[kPermitListMaxSize] = { MurmurHash("PASESession"),
                                               MurmurHash("GeneralCommissioning"),
                                               MurmurHash("OperationalCredentials"),
                                               MurmurHash("CASEServer"),
-                                              MurmurHash("Fabric") }; // namespace
+                                              MurmurHash("Fabric"),
+                                              MurmurHash("Resolver") }; // namespace
 
 bool IsPermitted(const char * str)
 {
@@ -149,23 +144,21 @@ void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
     }
 }
 
-void ESP32Diagnostics::TraceEnd(const char * label, const char * group)
-{
-    if (IsPermitted(group))
-    {
-        StoreDiagnostics(label, group);
-    }
-}
+void ESP32Diagnostics::TraceEnd(const char * label, const char * group) {}
 
-void ESP32Diagnostics::TraceInstant(const char * label, const char * group)
+void ESP32Diagnostics::TraceInstant(const char * label, const char * value)
 {
-    StoreDiagnostics(label, group);
+    if (!IsPermitted(value))
+    {
+        StoreDiagnostics(label, value);
+    }
 }
 
 void ESP32Diagnostics::StoreDiagnostics(const char * label, const char * group)
 {
     Diagnostic<const char *> trace(label, group, esp_log_timestamp());
-    VerifyOrReturn(mStorageInstance.Store(trace) == CHIP_NO_ERROR, ChipLogError(DeviceLayer, "Failed to store Trace Diagnostic data"));
+    VerifyOrReturn(mStorageInstance.Store(trace) == CHIP_NO_ERROR,
+                   ChipLogError(DeviceLayer, "Failed to store Trace Diagnostic data"));
 }
 
 } // namespace Diagnostics

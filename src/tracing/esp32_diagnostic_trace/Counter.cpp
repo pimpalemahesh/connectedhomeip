@@ -16,8 +16,8 @@
  *    limitations under the License.
  */
 
-#include <tracing/esp32_diagnostic_trace/Counter.h>
 #include <esp_log.h>
+#include <tracing/esp32_diagnostic_trace/Counter.h>
 
 namespace chip {
 namespace Tracing {

@@ -33,11 +33,16 @@ def parse_data(binary_data):
     global data_list
     data_list = []
     try:
-        t = TLVReader(binary_data)
-        tlv_data = t.get()['Any']
+        print(f"Before -> {binary_data}")
+        binary_data = bytes([0x17]) + binary_data + bytes([0x18])
 
-        for tag, entry in tlv_data:
+        print(f"After -> {binary_data}")
+        t = TLVReader(binary_data)
+        data = t.get()
+        print(data)
+        for tag, entry in data['Any']:
             data_list.append(entry)
+            print(entry)
     except ValueError as e:
         output_text.insert(END, f"Error parsing TLV data: {e}\n")
 

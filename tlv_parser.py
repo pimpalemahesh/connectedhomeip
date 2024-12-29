@@ -31,15 +31,15 @@ data_list = []
 def parse_data(file_path):
     global data_list
     data_list = []
-    
     try:
         with open(file_path, 'rb') as file:
             binary_data = file.read()
-        
+
+        binary_data = bytes([0x17]) + binary_data + bytes([0x18])
+
         t = TLVReader(binary_data)
-        tlv_data = t.get()['Any']
-        
-        for tag, entry in tlv_data:
+        data = t.get()
+        for tag, entry in data['Any']:
             data_list.append(entry)
 
     except FileNotFoundError:

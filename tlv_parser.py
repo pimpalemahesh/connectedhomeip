@@ -35,12 +35,17 @@ def parse_data(file_path):
     try:
         with open(file_path, 'rb') as file:
             binary_data = file.read()
+
+        binary_data = bytes([0x17]) + binary_data + bytes([0x18])
+
+        print(binary_data)
         
         t = TLVReader(binary_data)
-        tlv_data = t.get()['Any']
-        
-        for tag, entry in tlv_data:
+        data = t.get()
+        print(data)
+        for tag, entry in data['Any']:
             data_list.append(entry)
+            print(entry)
 
     except FileNotFoundError:
         output_text.insert(END, f"Error: File '{file_path}' not found.\n")

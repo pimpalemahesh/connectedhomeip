@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2025 Project CHIP Authors
+# Copyright (c) 2021-2023 Project CHIP Authors
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,17 +17,16 @@
 # (Uses default behaviour of compiling all source files in directory, adding 'include' to include path.)
 
 get_filename_component(CHIP_ROOT ${CMAKE_SOURCE_DIR}/third_party/connectedhomeip REALPATH)
-get_filename_component(ENERGY_GATEWAY_DIR ${CHIP_ROOT}/examples/energy-gateway-app/ REALPATH)
+get_filename_component(ENERGY_MANAGEMENT_COMMON_DIR ${CHIP_ROOT}/examples/energy-management-app/energy-management-common/ REALPATH)
 get_filename_component(APP_COMMON_GEN_DIR ${CHIP_ROOT}/zzz_generated/app-common/app-common/zap-generated REALPATH)
 
 set(PRIV_INCLUDE_DIRS_LIST
   "${CHIP_ROOT}/examples/providers"
-  "${ENERGY_GATEWAY_DIR}/commodity-price/include"
-  "${ENERGY_GATEWAY_DIR}/commodity-metering/include"
-  "${ENERGY_GATEWAY_DIR}/commodity-tariff/include"
-  "${ENERGY_GATEWAY_DIR}/common/include"
-  "${ENERGY_GATEWAY_DIR}/electrical-grid-conditions/include"
-  "${ENERGY_GATEWAY_DIR}/meter-identification/include"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/common/include"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/device-energy-management/include"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/energy-evse/include"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/energy-reporting/include"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/water-heater/include"
   "${CMAKE_CURRENT_LIST_DIR}/include"
   "${CHIP_ROOT}/examples/platform/esp32"
 )
@@ -36,17 +35,21 @@ set(SRC_DIRS_LIST
   "${APP_COMMON_GEN_DIR}/attributes"
   "${APP_COMMON_GEN_DIR}"
   "${CHIP_ROOT}/examples/providers"
-  "${ENERGY_GATEWAY_DIR}/commodity-price/src"
-  "${ENERGY_GATEWAY_DIR}/commodity-metering/src"
-  "${ENERGY_GATEWAY_DIR}/commodity-tariff/src"
-  "${ENERGY_GATEWAY_DIR}/common/src"
-  "${ENERGY_GATEWAY_DIR}/electrical-grid-conditions/src"
-  "${ENERGY_GATEWAY_DIR}/meter-identification/src"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/common/src"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/device-energy-management/src"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/energy-evse/src"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/energy-reporting/src"
+  "${ENERGY_MANAGEMENT_COMMON_DIR}/water-heater/src"
   "${CHIP_ROOT}/examples/platform/esp32/ota"
   "${CHIP_ROOT}/examples/platform/esp32/common"
   "${CHIP_ROOT}/examples/platform/esp32/time"
   "${CHIP_ROOT}/examples/platform/esp32/shell_extension"
 )
+
+if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS)
+    list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
+    list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
+endif() # CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS
 
 if(CONFIG_ENABLE_PW_RPC)
   # Append additional directories for RPC build
@@ -76,16 +79,14 @@ idf_component_register(PRIV_INCLUDE_DIRS ${PRIV_INCLUDE_DIRS_LIST}
 
 include(${CHIP_ROOT}/src/app/chip_data_model.cmake)
 chip_configure_data_model(${COMPONENT_LIB}
-    ZAP_FILE ${ENERGY_GATEWAY_DIR}/energy-gateway-common/energy-gateway-app.zap
+    ZAP_FILE ${ENERGY_MANAGEMENT_COMMON_DIR}/energy-management-app.zap
 )
 
 if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS)
-target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
-list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
-list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
+  target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
 endif() # CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS
 
-
+set_property(TARGET ${COMPONENT_LIB} PROPERTY CXX_STANDARD 17)
 target_compile_options(${COMPONENT_LIB} PRIVATE "-DCHIP_HAVE_CONFIG_H")
 target_compile_options(${COMPONENT_LIB} PUBLIC
   "-DCHIP_ADDRESS_RESOLVE_IMPL_INCLUDE_HEADER=<lib/address_resolve/AddressResolve_DefaultImpl.h>"

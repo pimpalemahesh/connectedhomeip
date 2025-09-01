@@ -1,5 +1,6 @@
 #pragma once
 #include <nvs_flash.h>
+#include <string>
 #include <tracing/esp32_diagnostic_trace/StorageInterface.h>
 
 namespace chip {
@@ -9,11 +10,8 @@ namespace Diagnostics {
 class NVSDiagnosticStorage : public DiagnosticStorageInterface
 {
 public:
-    NVSDiagnosticStorage(const char * nvs_namespace, uint32_t max_entries);
+    NVSDiagnosticStorage(const char * nvs_namespace);
     ~NVSDiagnosticStorage();
-
-    CHIP_ERROR Init(const char * nvs_namespace = "diagnostic");
-    CHIP_ERROR Deinit();
 
     CHIP_ERROR Store(const DiagnosticEntry & entry) override;
     CHIP_ERROR Retrieve(MutableByteSpan & span, uint32_t & read_entries) override;
@@ -23,10 +21,11 @@ public:
     CHIP_ERROR ClearBuffer(uint32_t entries) override;
 
 private:
-    bool mInitialized = false;
+    bool mInitialized          = false;
     const char * mNvsNamespace = nullptr;
-    uint32_t mStartIndex = 0;
-    uint32_t mLastIndex = 0;
+    uint32_t mStartIndex       = 0;
+    uint32_t mLastIndex        = 0;
+    std::string mIndexKeyBuffer; // Buffer to store the index key string
 
     const char * getIndexKey(uint32_t index);
 };

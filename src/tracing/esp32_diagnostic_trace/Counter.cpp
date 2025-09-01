@@ -37,7 +37,7 @@ uint32_t ESPDiagnosticCounter::GetInstanceCount(const char * label) const
     return (it != mCounterList.end()) ? it->second : 0;
 }
 
-CHIP_ERROR ESPDiagnosticCounter::ReportMetrics(const char * label, CircularDiagnosticBuffer * storageInstance)
+CHIP_ERROR ESPDiagnosticCounter::ReportMetrics(const char * label, DiagnosticStorageInterface * storageInstance)
 {
     VerifyOrReturnError(storageInstance != nullptr, CHIP_ERROR_INCORRECT_STATE,
                         ChipLogError(DeviceLayer, "Diagnostic Storage Instance cannot be NULL"));

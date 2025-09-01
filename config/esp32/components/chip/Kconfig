@@ -891,7 +891,7 @@ menu "CHIP Device Layer"
         menu "Diagnostics Configuration"
             choice
                 prompt "Diagnostics storage location"
-                default DIAGNOSTICS_IN_FLASH
+                default DIAGNOSTICS_IN_RAM
 
             config DIAGNOSTICS_IN_RAM
                 bool "Store diagnostics in RAM"

@@ -18,8 +18,7 @@
 
 #pragma once
 
-#include "tracing/esp32_diagnostic_trace/DiagnosticEntry.h"
-#include "tracing/esp32_diagnostic_trace/DiagnosticStorage.h"
+#include "tracing/esp32_diagnostic_trace/StorageInterface.h"
 #include <map>
 
 namespace chip {
@@ -46,7 +45,7 @@ public:
 
     uint32_t GetInstanceCount(const char * label) const;
 
-    CHIP_ERROR ReportMetrics(const char * label, CircularDiagnosticBuffer * storageInstance);
+    CHIP_ERROR ReportMetrics(const char * label, DiagnosticStorageInterface * storageInstance);
 
 private:
     ESPDiagnosticCounter() {}

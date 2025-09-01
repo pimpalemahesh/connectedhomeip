@@ -33,6 +33,9 @@ static_library("backend") {
     "DiagnosticStorage.h",
     "DiagnosticTracing.cpp",
     "DiagnosticTracing.h",
+    "StorageInterface.h",
+    "NVSDiagnosticStorage.h",
+    "NVSDiagnosticStorage.cpp",
   ]
 
   public_deps = [

@@ -19,6 +19,7 @@
 #include "Esp32AppServer.h"
 #include "CHIPDeviceManager.h"
 #include "Esp32ThreadInit.h"
+#include "FactoryResetTestEventTriggerHandler.h"
 #include <app/InteractionModelEngine.h>
 #include <app/TestEventTriggerDelegate.h>
 #include <app/clusters/network-commissioning/network-commissioning.h>
@@ -219,6 +220,10 @@ void Esp32AppServer::Init(AppDelegate * sAppDelegate)
     static OTATestEventTriggerHandler sOtaTestEventTriggerHandler{};
     VerifyOrDie(sTestEventTriggerDelegate.AddHandler(&sOtaTestEventTriggerHandler) == CHIP_NO_ERROR);
 #endif
+
+    static FactoryResetTestEventTriggerHandler sFactoryResetTestEventTriggerHandler{};
+    VerifyOrDie(sTestEventTriggerDelegate.AddHandler(&sFactoryResetTestEventTriggerHandler) == CHIP_NO_ERROR);
+
     initParams.testEventTriggerDelegate = &sTestEventTriggerDelegate;
 #endif // CONFIG_TEST_EVENT_TRIGGER_ENABLED && CONFIG_ENABLE_OTA_REQUESTOR
     (void) initParams.InitializeStaticResourcesBeforeServerInit();

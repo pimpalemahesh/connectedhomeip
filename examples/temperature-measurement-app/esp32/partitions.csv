@@ -5,3 +5,4 @@ phy_init, data, phy,     ,        0x1000,
 # Factory partition size about 1.5MB
 factory,  app,  factory, ,        1536K,
 coredump, data, coredump,,        64K, encrypted
+diagnostic, data, nvs,,    64K,

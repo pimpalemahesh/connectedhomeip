@@ -53,9 +53,14 @@
 
 #ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
 #include <diagnostic-logs-provider-delegate-impl.h>
-static uint8_t retrievalBuffer[CONFIG_RETRIEVAL_BUFFER_SIZE]; // Global static buffer used to retrieve diagnostics
-static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE];    // Global static buffer used to store diagnostics
 
+#ifdef CONFIG_DIAGNOSTICS_IN_RAM
+static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE];    // Global static buffer used to store diagnostics
+#endif // CONFIG_DIAGNOSTICS_IN_RAM
+#ifdef CONFIG_DIAGNOSTICS_IN_FLASH
+static const char * nvs_namespace = "diagnostic";
+#endif // CONFIG_DIAGNOSTICS_IN_FLASH
+static uint8_t retrievalBuffer[CONFIG_RETRIEVAL_BUFFER_SIZE]; // Global static buffer used to retrieve diagnostics
 using namespace chip::app::Clusters::DiagnosticLogs;
 #endif // CONFIG_ENABLE_ESP_DIAGNOSTICS_TRACE
 
@@ -140,11 +145,16 @@ extern "C" void app_main()
 void emberAfDiagnosticLogsClusterInitCallback(chip::EndpointId endpoint)
 {
     auto & logProvider                        = LogProvider::GetInstance();
-    LogProvider::LogProviderInit providerInit = {
+    LogProvider::LogProviderInitParams providerInit = {
+#ifdef CONFIG_DIAGNOSTICS_IN_RAM
         .endUserBuffer       = endUserBuffer,
         .endUserBufferSize   = CONFIG_END_USER_BUFFER_SIZE,
+#endif // CONFIG_DIAGNOSTICS_IN_RAM
         .retrievalBuffer     = retrievalBuffer,
         .retrievalBufferSize = CONFIG_RETRIEVAL_BUFFER_SIZE,
+#ifdef CONFIG_DIAGNOSTICS_IN_FLASH
+        .nvs_namespace       = nvs_namespace,
+#endif // CONFIG_DIAGNOSTICS_IN_FLASH
     };
     logProvider.Init(providerInit);
     DiagnosticLogsServer::Instance().SetDiagnosticLogsProviderDelegate(endpoint, &logProvider);

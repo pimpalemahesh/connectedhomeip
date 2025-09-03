@@ -928,6 +928,13 @@ menu "CHIP Device Layer"
                 The EnableKey in hex string format used by TestEventTrigger command in GeneralDiagnostics
                 cluster. The length of the string should be 32.
 
+        config FACTORY_RESET_TRIGGER_VALUE
+            hex "Factory Reset Test Event Trigger Value"
+            depends on TEST_EVENT_TRIGGER_ENABLED
+            default 0xFFFF000000000001
+            help
+                The test event trigger value used to initiate a factory reset.
+
     endmenu
 
     menu "Network Telemetry Options"

@@ -26,7 +26,8 @@
 #include <esp_core_dump.h>
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
-#include <tracing/esp32_diagnostic_trace/DiagnosticStorage.h>
+
+#include <tracing/esp32_diagnostic_trace/StorageInterface.h>
 using namespace chip::Tracing::Diagnostics;
 namespace chip {
 namespace app {
@@ -42,16 +43,21 @@ namespace DiagnosticLogs {
 class LogProvider : public DiagnosticLogsProviderDelegate
 {
 public:
-    struct LogProviderInit
+    struct LogProviderInitParams
     {
+#if CONFIG_DIAGNOSTICS_IN_RAM
         uint8_t * endUserBuffer;
         size_t endUserBufferSize;
-        uint8_t * retrievalBuffer;
-        size_t retrievalBufferSize;
+#endif // CONFIG_DIAGNOSTICS_IN_RAM
+uint8_t * retrievalBuffer;
+size_t retrievalBufferSize;
+#if CONFIG_DIAGNOSTICS_IN_FLASH
+        const char * nvs_namespace;
+#endif // CONFIG_DIAGNOSTICS_IN_FLASH
     };
 
     static inline LogProvider & GetInstance() { return sInstance; }
-    CHIP_ERROR Init(LogProviderInit & init);
+    CHIP_ERROR Init(LogProviderInitParams & init);
     /////////// DiagnosticLogsProviderDelegate Interface /////////
     CHIP_ERROR StartLogCollection(IntentEnum intent, LogSessionHandle & outHandle, Optional<uint64_t> & outTimeStamp,
                                   Optional<uint64_t> & outTimeSinceBoot) override;
@@ -63,15 +69,14 @@ public:
 
 private:
     static LogProvider sInstance;
+    LogProviderInitParams mProviderInitParams;
     LogProvider() = default;
     ~LogProvider();
 
     LogProvider(const LogProvider &)             = delete;
     LogProvider & operator=(const LogProvider &) = delete;
     // If mStorageInstance is nullptr then operations related to diagnostic storage will be skipped.
-    CircularDiagnosticBuffer * mStorageInstance = nullptr;
-    uint8_t * mRetrievalBuffer                  = nullptr;
-    size_t mBufferSize                          = 0;
+    DiagnosticStorageInterface * mStorageInstance = nullptr;
 
     struct CrashLogContext
     {

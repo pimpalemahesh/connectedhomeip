@@ -24,6 +24,14 @@
 #include <esp_core_dump.h>
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
+#ifdef CONFIG_DIAGNOSTICS_IN_RAM
+#include <tracing/esp32_diagnostic_trace/CircularDiagnosticBuffer.h>
+#endif // CONFIG_DIAGNOSTICS_IN_RAM
+
+#ifdef CONFIG_DIAGNOSTICS_IN_FLASH
+#include <tracing/esp32_diagnostic_trace/NVSDiagnosticStorage.h>
+#endif // CONFIG_DIAGNOSTICS_IN_FLASH
+
 using namespace chip;
 using namespace chip::app::Clusters::DiagnosticLogs;
 
@@ -52,22 +60,23 @@ LogProvider::~LogProvider()
         delete mStorageInstance;
         mStorageInstance = nullptr;
     }
-    if (mRetrievalBuffer != nullptr)
+    if (mProviderInitParams.retrievalBuffer != nullptr)
     {
-        Platform::MemoryFree(mRetrievalBuffer);
-        mRetrievalBuffer = nullptr;
+        Platform::MemoryFree(mProviderInitParams.retrievalBuffer);
+        mProviderInitParams.retrievalBuffer = nullptr;
     }
 }
 
-CHIP_ERROR LogProvider::Init(LogProviderInit & providerInit)
+CHIP_ERROR LogProvider::Init(LogProviderInitParams & providerInit)
 {
-    mRetrievalBuffer = providerInit.retrievalBuffer;
-    mBufferSize      = providerInit.retrievalBufferSize;
+    mProviderInitParams = providerInit;
+#if CONFIG_DIAGNOSTICS_IN_RAM
     mStorageInstance = new CircularDiagnosticBuffer(providerInit.endUserBuffer, providerInit.endUserBufferSize);
-    if (mStorageInstance == nullptr)
-    {
-        return CHIP_ERROR_NO_MEMORY;
-    }
+#endif // CONFIG_DIAGNOSTICS_IN_RAM
+#if CONFIG_DIAGNOSTICS_IN_FLASH
+    mStorageInstance = new NVSDiagnosticStorage(providerInit.nvs_namespace);
+#endif // CONFIG_DIAGNOSTICS_IN_FLASH
+    VerifyOrReturnError(mStorageInstance != nullptr, CHIP_ERROR_NO_MEMORY);
     static chip::Tracing::Diagnostics::ESP32Diagnostics diagnosticBackend(mStorageInstance);
     chip::Tracing::Register(diagnosticBackend);
     return CHIP_NO_ERROR;
@@ -132,7 +141,7 @@ CHIP_ERROR LogProvider::PrepareLogContextForIntent(LogContext * context, IntentE
     case IntentEnum::kEndUserSupport: {
         VerifyOrReturnError(mStorageInstance != nullptr, CHIP_ERROR_INTERNAL,
                             ChipLogError(DeviceLayer, "Diagnostic Storage instance cannot be null."));
-        MutableByteSpan endUserSupportSpan(mRetrievalBuffer, mBufferSize);
+        MutableByteSpan endUserSupportSpan(mProviderInitParams.retrievalBuffer, mProviderInitParams.retrievalBufferSize);
         VerifyOrReturnError(!mStorageInstance->IsBufferEmpty(), CHIP_ERROR_NOT_FOUND,
                             ChipLogError(DeviceLayer, "Empty Diagnostic buffer"));
         // Retrieve data from the diagnostic storage

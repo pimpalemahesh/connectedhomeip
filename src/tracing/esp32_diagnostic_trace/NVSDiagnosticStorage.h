@@ -19,14 +19,24 @@ public:
     uint32_t GetDataSize() override;
     CHIP_ERROR ClearBuffer() override;
     CHIP_ERROR ClearBuffer(uint32_t entries) override;
+    /*
+     * Set the maximum number of entries that can be stored in the buffer.
+     * This is used to prevent the buffer from growing indefinitely.
+     */
+    CHIP_ERROR SetMaxEntries(uint32_t max_entries);
 
 private:
     bool mInitialized          = false;
     const char * mNvsNamespace = nullptr;
-    uint32_t mStartIndex       = 0;
-    uint32_t mLastIndex        = 0;
-    std::string mIndexKeyBuffer; // Buffer to store the index key string
-
+    /*
+     * Circular Buffer Logic:
+     * - mStartIndex: Index of the oldest entry
+     * - mLastIndex: Index where the next entry will be stored
+     */
+    uint32_t mStartIndex = 0;
+    uint32_t mLastIndex  = 0;
+    std::string mIndexKeyBuffer;
+    uint32_t mMaxEntries = 1000;
     const char * getIndexKey(uint32_t index);
 };
 

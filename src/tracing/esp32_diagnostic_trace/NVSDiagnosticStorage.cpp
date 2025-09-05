@@ -1,5 +1,6 @@
 #include <nvs_flash.h>
 #include <string>
+#include <limits>
 #include <tracing/esp32_diagnostic_trace/NVSDiagnosticStorage.h>
 
 namespace chip {
@@ -11,9 +12,19 @@ NVSDiagnosticStorage::NVSDiagnosticStorage(const char * nvs_namespace)
     esp_err_t ret = nvs_flash_init();
     VerifyOrReturn(ret == ESP_OK, ChipLogError(DeviceLayer, "Failed to initialize NVS"));
     mNvsNamespace = nvs_namespace;
-    mInitialized  = true;
-    mStartIndex   = 0;
-    mLastIndex    = 0;
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(mNvsNamespace, NVS_READWRITE, &handle);
+    VerifyOrReturn(err == ESP_OK, ChipLogError(DeviceLayer, "Failed to open NVS namespace: %s", esp_err_to_name(err)));
+
+    uint32_t startIdx = 0, lastIdx = 0;
+    nvs_get_u32(handle, "start_idx", &startIdx);
+    nvs_get_u32(handle, "last_idx", &lastIdx);
+
+    mStartIndex = startIdx;
+    mLastIndex  = lastIdx;
+
+    nvs_close(handle);
+    mInitialized = true;
 }
 
 NVSDiagnosticStorage::~NVSDiagnosticStorage()
@@ -37,18 +48,29 @@ CHIP_ERROR NVSDiagnosticStorage::Store(const DiagnosticEntry & diagnostic)
     VerifyOrReturnError(ret == ESP_OK, CHIP_ERROR_INTERNAL,
                         ChipLogError(DeviceLayer, "Failed to write entry at index %lu: %s", mLastIndex, esp_err_to_name(ret)));
 
+    uint32_t oldLastIndex = mLastIndex;
+    mLastIndex++;
+
+    if (mLastIndex == mStartIndex && oldLastIndex != mStartIndex)
+    {
+        mStartIndex++;
+        if (mStartIndex == mMaxEntries)
+        {
+            mStartIndex = 0;
+        }
+    }
+
+    if (mLastIndex == mMaxEntries)
+    {
+        mLastIndex = 0;
+    }
+
+    nvs_set_u32(handle, "start_idx", mStartIndex);
+    nvs_set_u32(handle, "last_idx", mLastIndex);
     ret = nvs_commit(handle);
     VerifyOrReturnError(ret == ESP_OK, CHIP_ERROR_INTERNAL,
                         ChipLogError(DeviceLayer, "Failed to commit NVS changes: %s", esp_err_to_name(ret)));
-
     nvs_close(handle);
-
-    mLastIndex++;
-    if (mLastIndex == INT_MAX)
-    {
-        mStartIndex++;
-        mLastIndex = 0;
-    }
 
     return CHIP_NO_ERROR;
 }
@@ -79,7 +101,6 @@ CHIP_ERROR NVSDiagnosticStorage::Retrieve(MutableByteSpan & payload, uint32_t & 
             ChipLogError(DeviceLayer, "Failed to read entry at index %lu: %s", i, esp_err_to_name(ret));
             continue;
         }
-
         err = Encode(writer, entry);
         if (err == CHIP_ERROR_BUFFER_TOO_SMALL)
         {
@@ -144,6 +165,10 @@ CHIP_ERROR NVSDiagnosticStorage::ClearBuffer(uint32_t entries)
     VerifyOrReturnError(err == ESP_OK, CHIP_ERROR_INTERNAL);
 
     mStartIndex += entries;
+    if (mStartIndex >= mMaxEntries)
+    {
+        mStartIndex = 0;
+    }
     if (mStartIndex >= mLastIndex)
     {
         mStartIndex = 0;
@@ -151,6 +176,13 @@ CHIP_ERROR NVSDiagnosticStorage::ClearBuffer(uint32_t entries)
     }
 
     nvs_close(handle);
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR NVSDiagnosticStorage::SetMaxEntries(uint32_t max_entries)
+{
+    VerifyOrReturnError(mInitialized, CHIP_ERROR_INTERNAL);
+    mMaxEntries = max_entries;
     return CHIP_NO_ERROR;
 }
 

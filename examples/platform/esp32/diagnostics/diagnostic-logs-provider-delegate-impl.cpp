@@ -25,7 +25,7 @@
 #endif // defined(CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH) && defined(CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF)
 
 #ifdef CONFIG_DIAGNOSTICS_IN_RAM
-#include <tracing/esp32_diagnostic_trace/CircularDiagnosticBuffer.h>
+#include <tracing/esp32_diagnostic_trace/DiagnosticStorage.h>
 #endif // CONFIG_DIAGNOSTICS_IN_RAM
 
 #ifdef CONFIG_DIAGNOSTICS_IN_FLASH

@@ -16,7 +16,8 @@
  *    limitations under the License.
  */
 
-#include <tracing/esp32_diagnostic_trace/DiagnosticStorage.h>
+#include <tracing/esp32_diagnostic_trace/CircularBufferStorage.h>
+#include <tracing/esp32_diagnostic_trace/DiagnosticEntry.h>
 using namespace chip::TLV;
 
 namespace chip {

@@ -875,41 +875,34 @@ menu "CHIP Device Layer"
                 NVS namespace. If this option is enabled, the application can use an API to set a CD,
                 the configured CD will be used for subsequent CD reads.
 
-        config ENABLE_ESP_DIAGNOSTICS_TRACE
-            bool "Enable ESP Platform Diagnostics for Matter"
-            default n
-            help
-                Enables the ESP Diagnostics platform to collect, store, and retrieve diagnostic data for the Matter protocol.
-                This feature helps monitor system health and performance by providing insights through diagnostics logs.
-
         config MAX_PERMIT_LIST_SIZE
             int "Set permit list size for filtered traces"
             range 5 30
-            depends on ENABLE_ESP_DIAGNOSTICS_TRACE
+            depends on ESP_DIAGNOSTICS_ENABLED
             default 20
             help
                 Set the maximum number of group entries that can be included in the permit list for filtering traces.
     endmenu
 
     menu "Diagnostics Options"
-        config ENABLE_ESP_DIAGNOSTICS
+        config ESP_DIAGNOSTICS_ENABLED
             bool "Enable ESP Platform Diagnostics for Matter"
             default n
             help
                 Enables the ESP Diagnostics platform to collect, store, and retrieve diagnostic data for the Matter protocol.
                 This feature helps monitor system health and performance by providing insights through diagnostics logs.
 
-        config ENABLE_ESP_DIAGNOSTIC_TRACES
+        config ESP_DIAGNOSTIC_TRACES_ENABLED
             bool "Enable Traces"
             default y
-            depends on ENABLE_ESP_DIAGNOSTICS
+            depends on ESP_DIAGNOSTICS_ENABLED
             help
                 Enable Traces for the ESP Platform Diagnostics for Matter.
 
-        config ENABLE_ESP_DIAGNOSTIC_METRICS
+        config ESP_DIAGNOSTIC_METRICS_ENABLED
             bool "Enable Metrics"
             default y
-            depends on ENABLE_ESP_DIAGNOSTICS
+            depends on ESP_DIAGNOSTICS_ENABLED
             help
                 Enable Metrics for the ESP Platform Diagnostics for Matter.
     endmenu

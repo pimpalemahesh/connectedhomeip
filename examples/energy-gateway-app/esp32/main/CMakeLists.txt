@@ -79,11 +79,11 @@ chip_configure_data_model(${COMPONENT_LIB}
     ZAP_FILE ${ENERGY_GATEWAY_DIR}/energy-gateway-common/energy-gateway-app.zap
 )
 
-if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS)
+if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED)
 target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
 list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
 list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
-endif() # CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS
+endif() # CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED
 
 
 target_compile_options(${COMPONENT_LIB} PRIVATE "-DCHIP_HAVE_CONFIG_H")

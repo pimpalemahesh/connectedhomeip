@@ -9,7 +9,7 @@ Enable the following configuration options to use the ESP32 Diagnostic Logs
 Provider:
 
 ```
-CONFIG_ENABLE_ESP_DIAGNOSTICS=y
+CONFIG_ESP_DIAGNOSTICS_ENABLED=y
 ```
 
 This option enables the diagnostic logs storage functionality. By default, this
@@ -21,15 +21,15 @@ options accordingly:
 To enable only metrics:
 
 ```
-CONFIG_ENABLE_ESP_DIAGNOSTIC_TRACES=n
-CONFIG_ENABLE_ESP_DIAGNOSTIC_METRICS=y
+CONFIG_ESP_DIAGNOSTIC_TRACES_ENABLED=n
+CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED=y
 ```
 
 To enable only traces:
 
 ```
-CONFIG_ENABLE_ESP_DIAGNOSTIC_TRACES=y
-CONFIG_ENABLE_ESP_DIAGNOSTIC_METRICS=n
+CONFIG_ESP_DIAGNOSTIC_TRACES_ENABLED=y
+CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED=n
 ```
 
 After modifying the configuration options, make sure to perform a clean build to
@@ -67,12 +67,12 @@ Add the diagnostic logs provider delegate header to your application:
 Define buffers to store and retrieve diagnostic data:
 
 ```cpp
-#ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS
+#ifdef CONFIG_ESP_DIAGNOSTICS_ENABLED
 static uint8_t retrievalBuffer[CONFIG_RETRIEVAL_BUFFER_SIZE]; // Buffer for retrieving diagnostics
 static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE];    // Buffer for storing diagnostics
 
 using namespace chip::app::Clusters::DiagnosticLogs;
-#endif // CONFIG_ENABLE_ESP_DIAGNOSTICS
+#endif // CONFIG_ESP_DIAGNOSTICS_ENABLED
 ```
 
 The buffer sizes can be configured through Kconfig options:
@@ -92,7 +92,7 @@ menu "Platform Diagnostics"
 
     config END_USER_BUFFER_SIZE
         int "Set buffer size for end user diagnostic data"
-        depends on ENABLE_ESP_DIAGNOSTICS_TRACE
+        depends on ESP_DIAGNOSTIC_TRACES_ENABLED
         default 4096
         help
             Defines the buffer size (in bytes) for storing diagnostic data related to end user activity.
@@ -100,7 +100,7 @@ menu "Platform Diagnostics"
 
     config RETRIEVAL_BUFFER_SIZE
         int "Set buffer size for retrieval of diagnostics from diagnostic storage"
-        depends on ENABLE_ESP_DIAGNOSTICS_TRACE
+        depends on ESP_DIAGNOSTIC_TRACES_ENABLED
         default 4096
         help
             Defines the buffer size (in bytes) for retrieval of diagnostic data.
@@ -116,14 +116,14 @@ this complete configuration.
 Implement the diagnostic logs cluster initialization callback:
 
 ```cpp
-#ifdef CONFIG_ENABLE_ESP_DIAGNOSTICS
+#ifdef CONFIG_ESP_DIAGNOSTICS_ENABLED
 void emberAfDiagnosticLogsClusterInitCallback(chip::EndpointId endpoint)
 {
     auto & logProvider = LogProvider::GetInstance();
     logProvider.Init(endUserBuffer, CONFIG_END_USER_BUFFER_SIZE, retrievalBuffer, CONFIG_RETRIEVAL_BUFFER_SIZE);
     DiagnosticLogsServer::Instance().SetDiagnosticLogsProviderDelegate(endpoint, &logProvider);
 }
-#endif // CONFIG_ENABLE_ESP_DIAGNOSTICS
+#endif // CONFIG_ESP_DIAGNOSTICS_ENABLED
 ```
 
 This callback initializes the log provider with the configured buffers and sets
@@ -165,13 +165,13 @@ Enable the following configuration options to use ESP Insights:
 
 ```
 CONFIG_ESP_INSIGHTS_ENABLED=y
-CONFIG_ENABLE_ESP_DIAGNOSTICS=y
+CONFIG_ESP_DIAGNOSTICS_ENABLED=y
 ```
 
 Both options are required:
 
 -   `CONFIG_ESP_INSIGHTS_ENABLED`: Enables ESP Insights cloud integration
--   `CONFIG_ENABLE_ESP_DIAGNOSTICS`: Enables diagnostic data collection
+-   `CONFIG_ESP_DIAGNOSTICS_ENABLED`: Enables diagnostic data collection
 
 ## Implementation Reference
 
@@ -192,7 +192,7 @@ handles diagnostic data collection and transmission to ESP Insights.
 Add the insights delegate header to your application:
 
 ```cpp
-#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ENABLE_ESP_DIAGNOSTICS
+#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ESP_DIAGNOSTICS_ENABLED
 #include <insights-delegate.h>
 #endif
 ```
@@ -202,7 +202,7 @@ Add the insights delegate header to your application:
 Define buffers and authentication key for insights:
 
 ```cpp
-#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ENABLE_ESP_DIAGNOSTICS
+#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ESP_DIAGNOSTICS_ENABLED
 #define START_TIMEOUT_MS 10000
 static uint8_t endUserBuffer[CONFIG_END_USER_BUFFER_SIZE]; // Global static buffer used to store diagnostics
 extern const char insights_auth_key_start[] asm("_binary_insights_auth_key_txt_start");
@@ -222,7 +222,7 @@ Implement the insights initialization function:
 ```cpp
 static void InitInsights()
 {
-#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ENABLE_ESP_DIAGNOSTICS
+#if CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ESP_DIAGNOSTICS_ENABLED
     chip::Insights::InsightsInitParams initParams = {
         .diagnosticBuffer     = endUserBuffer,
         .diagnosticBufferSize = CONFIG_END_USER_BUFFER_SIZE,
@@ -247,7 +247,7 @@ static void InitInsights()
 Add the following to your application's CMakeLists.txt:
 
 ```cmake
-if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS)
+if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED)
     list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
     list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
     target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
@@ -264,7 +264,7 @@ menu "Platform Diagnostics"
 
     config END_USER_BUFFER_SIZE
         int "Set buffer size for end user diagnostic data"
-        depends on ENABLE_ESP_DIAGNOSTICS_TRACE
+        depends on ESP_DIAGNOSTIC_TRACES_ENABLED
         default 4096
         help
             Defines the buffer size (in bytes) for storing diagnostic data related to end user activity.
@@ -328,7 +328,7 @@ file in each application folder.
 ## Important Notes
 
 -   The diagnostic logs provider **must** be explicitly enabled through the
-    `CONFIG_ENABLE_ESP_DIAGNOSTICS` option
+    `CONFIG_ESP_DIAGNOSTICS_ENABLED` option
 -   Buffer sizes should be adjusted based on your application's needs
 -   The provider supports end-user support logs and crash logs (when configured)
 -   Authentication key must be obtained from ESP Insights dashboard and stored

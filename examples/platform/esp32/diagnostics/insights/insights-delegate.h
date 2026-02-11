@@ -6,8 +6,8 @@
 #include <map>
 #include <platform/CHIPDeviceLayer.h>
 #include <system/SystemClock.h>
-#include <tracing/esp32_diagnostic_trace/DiagnosticEntry.h>
-#include <tracing/esp32_diagnostic_trace/DiagnosticStorage.h>
+#include <tracing/esp32_diagnostics/DiagnosticEntry.h>
+#include <tracing/esp32_diagnostics/DiagnosticStorage.h>
 
 namespace chip {
 namespace Insights {

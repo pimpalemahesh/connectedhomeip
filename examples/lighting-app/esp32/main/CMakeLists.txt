@@ -38,7 +38,7 @@ set(SRC_DIRS_LIST
                       "${CHIP_ROOT}/examples/platform/esp32/shell_extension"
 )
 
-if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ENABLE_ESP_DIAGNOSTICS)
+if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED)
     list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
     list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
 endif()
@@ -75,7 +75,7 @@ chip_configure_data_model(${COMPONENT_LIB}
     ZAP_FILE ${CMAKE_SOURCE_DIR}/data_model/lighting-app.zap
 )
 
-if ((CONFIG_ENABLE_ESP_DIAGNOSTICS) AND (CONFIG_ESP_INSIGHTS_ENABLED))
+if ((CONFIG_ESP_DIAGNOSTICS_ENABLED) AND (CONFIG_ESP_INSIGHTS_ENABLED))
     target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
 endif()
 

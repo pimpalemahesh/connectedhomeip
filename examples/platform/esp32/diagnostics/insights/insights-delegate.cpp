@@ -9,8 +9,8 @@
 #include <map>
 #include <platform/CHIPDeviceLayer.h>
 #include <system/SystemClock.h>
-#include <tracing/esp32_diagnostic_trace/DiagnosticStorage.h>
-#include <tracing/esp32_diagnostic_trace/DiagnosticTracing.h>
+#include <tracing/esp32_diagnostics/DiagnosticStorage.h>
+#include <tracing/esp32_diagnostics/DiagnosticTracing.h>
 
 #define kMaxStringValueSize 128
 
@@ -60,8 +60,7 @@ CHIP_ERROR InsightsDelegate::SetSamplingInterval(chip::System::Clock::Timeout aT
 
     if (mTimeout == System::Clock::kZero)
     {
-        StopPeriodicInsights();
-        return CHIP_NO_ERROR;
+        return StopPeriodicInsights();
     }
 
     // Cancel existing timer and start new one
@@ -114,8 +113,7 @@ CHIP_ERROR InsightsDelegate::SendInsightsData()
         }
     }
     // Clear buffer after successful processing
-    mStorageInstance->ClearBuffer(readEntries);
-    return CHIP_NO_ERROR;
+    return mStorageInstance->ClearBuffer(readEntries);
 }
 
 void InsightsDelegate::LogTraceData(const DiagnosticEntry & entry)
@@ -219,7 +217,8 @@ void InsightsDelegate::InsightsHandler(System::Layer * systemLayer, void * conte
     VerifyOrReturn(instance->mStorageInstance != nullptr);
     while (!instance->mStorageInstance->IsBufferEmpty())
     {
-        instance->SendInsightsData();
+        CHIP_ERROR err = instance->SendInsightsData();
+        VerifyOrReturn(err == CHIP_NO_ERROR, ESP_LOGE(TAG, "SendInsightsData() failed: %" CHIP_ERROR_FORMAT, err.Format()));
     }
 
     // Schedule next sampling

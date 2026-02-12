@@ -165,6 +165,8 @@ static void InitInsights()
     VerifyOrReturn(error == CHIP_NO_ERROR, ESP_LOGE(TAG, "Failed to initialize ESP Insights"));
     error = insightsDelegate.StartPeriodicInsights(chip::System::Clock::Timeout(START_TIMEOUT_MS));
     VerifyOrReturn(error == CHIP_NO_ERROR, ESP_LOGE(TAG, "Failed to start periodic insights"));
+#else
+    ESP_LOGI(TAG, "ESP Insights is not enabled");
 #endif // CONFIG_ESP_INSIGHTS_ENABLED && CONFIG_ESP_DIAGNOSTICS_ENABLED
 }
 

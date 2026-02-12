@@ -62,16 +62,12 @@ public:
 private:
     Tracing::Diagnostics::CircularDiagnosticBuffer * mStorageInstance = nullptr;
     System::Clock::Timeout mTimeout                                   = System::Clock::kZero;
-    struct StringCompare
-    {
-        bool operator()(const char * a, const char * b) const { return strcmp(a, b) < 0; }
-    };
-    std::map<const char *, chip::Tracing::Diagnostics::ValueType, StringCompare> mRegisteredMetrics;
+    std::map<std::string, chip::Tracing::Diagnostics::ValueType> mRegisteredMetrics;
 
     CHIP_ERROR SendInsightsData();
     void LogTraceData(const chip::Tracing::Diagnostics::DiagnosticEntry & entry);
     void LogMetricData(const chip::Tracing::Diagnostics::DiagnosticEntry & entry);
-    void RegisterMetric(const char * key, chip::Tracing::Diagnostics::ValueType type);
+    void RegisterMetric(const std::string & key, chip::Tracing::Diagnostics::ValueType type);
     static void InsightsHandler(chip::System::Layer * systemLayer, void * context);
 };
 

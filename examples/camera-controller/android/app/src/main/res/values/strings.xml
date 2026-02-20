@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Camera Controller</string>
+    <string name="nav_devices">Devices</string>
+    <string name="nav_commission">Commission</string>
+    <string name="nav_live_view">Live View</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Devices Screen -->
+    <string name="no_devices">No cameras paired yet</string>
+    <string name="no_devices_subtitle">Commission a camera device to get started</string>
+    <string name="device_node_id">Node ID: %s</string>
+    <string name="device_status_connected">Connected</string>
+    <string name="device_status_disconnected">Disconnected</string>
+    <string name="remove_device">Remove Device</string>
+    <string name="remove_device_confirm">Remove this camera from paired devices?</string>
+
+    <!-- Commissioning Screen -->
+    <string name="commission_title">Commission Camera</string>
+    <string name="commission_subtitle">Pair a new Matter camera device</string>
+    <string name="scan_qr_code">Scan QR Code</string>
+    <string name="manual_code_entry">Manual Code Entry</string>
+    <string name="setup_code_hint">Enter setup code (e.g. 20202021)</string>
+    <string name="discriminator_hint">Discriminator (optional)</string>
+    <string name="node_id_hint">Node ID</string>
+    <string name="commission_button">Commission</string>
+    <string name="commissioning_in_progress">Commissioning in progress...</string>
+    <string name="commissioning_success">Camera commissioned successfully!</string>
+    <string name="commissioning_failed">Commissioning failed: %s</string>
+    <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
+
+    <!-- Live View Screen -->
+    <string name="select_camera">Select a camera</string>
+    <string name="no_camera_selected">No camera selected</string>
+    <string name="start_live_view">Start Live View</string>
+    <string name="stop_live_view">Stop Live View</string>
+    <string name="connecting">Connecting...</string>
+    <string name="streaming">Streaming</string>
+    <string name="stream_stopped">Stream stopped</string>
+    <string name="live">LIVE</string>
+    <string name="resolution_label">Resolution</string>
+    <string name="framerate_label">Frame Rate</string>
+    <string name="bitrate_label">Bit Rate</string>
+    <string name="stream_settings">Stream Settings</string>
+    <string name="width_hint">Min Width</string>
+    <string name="height_hint">Min Height</string>
+    <string name="framerate_hint">Min Frame Rate</string>
+    <string name="bitrate_hint">Min Bit Rate (kbps)</string>
+    <string name="webrtc_session_established">WebRTC session established</string>
+    <string name="webrtc_session_failed">WebRTC session failed: %s</string>
+    <string name="video_stream_allocated">Video stream allocated (ID: %d)</string>
+    <string name="video_stream_failed">Failed to allocate video stream: %s</string>
+
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="error">Error</string>
+    <string name="loading">Loading...</string>
+</resources>

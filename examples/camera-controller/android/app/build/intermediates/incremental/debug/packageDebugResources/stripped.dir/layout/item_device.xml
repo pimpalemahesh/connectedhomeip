@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="2dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+
+        <ImageView
+            android:id="@+id/device_icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_devices"
+            android:background="@drawable/bg_video_surface"
+            android:padding="10dp"
+            android:contentDescription="Camera device"
+            app:tint="@color/on_primary"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+        <TextView
+            android:id="@+id/device_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface"
+            android:textStyle="bold"
+            app:layout_constraintStart_toEndOf="@id/device_icon"
+            app:layout_constraintEnd_toStartOf="@id/btn_live_view"
+            app:layout_constraintTop_toTopOf="@id/device_icon"
+            android:text="Camera Device" />
+
+        <TextView
+            android:id="@+id/device_node_id"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:textSize="13sp"
+            android:textColor="@color/on_surface_secondary"
+            app:layout_constraintStart_toEndOf="@id/device_icon"
+            app:layout_constraintEnd_toStartOf="@id/btn_live_view"
+            app:layout_constraintTop_toBottomOf="@id/device_name"
+            android:text="Node ID: 1" />
+
+        <View
+            android:id="@+id/status_indicator"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginStart="16dp"
+            android:background="@drawable/bg_status_indicator"
+            app:layout_constraintStart_toEndOf="@id/device_icon"
+            app:layout_constraintTop_toBottomOf="@id/device_node_id"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/device_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:textSize="12sp"
+            android:textColor="@color/status_connected"
+            app:layout_constraintStart_toEndOf="@id/status_indicator"
+            app:layout_constraintTop_toTopOf="@id/status_indicator"
+            app:layout_constraintBottom_toBottomOf="@id/status_indicator"
+            android:text="@string/device_status_connected" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_live_view"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="@string/nav_live_view"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:cornerRadius="18dp" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -55,7 +55,7 @@ class DeviceAdapter(
             } else {
                 ContextCompat.getColor(binding.root.context, R.color.status_connected)
             }
-            binding.statusIndicator.background.setTint(statusColor)
+            binding.statusIndicator.background?.mutate()?.setTint(statusColor)
             binding.deviceStatus.setTextColor(statusColor)
             binding.deviceStatus.text = if (device.isStreaming) {
                 binding.root.context.getString(R.string.streaming)

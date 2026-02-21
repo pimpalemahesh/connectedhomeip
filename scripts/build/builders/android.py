@@ -67,6 +67,7 @@ class AndroidApp(Enum):
     JAVA_MATTER_CONTROLLER = auto()
     KOTLIN_MATTER_CONTROLLER = auto()
     VIRTUAL_DEVICE_APP = auto()
+    CAMERA_CONTROLLER = auto()
 
     def AppName(self):
         if self == AndroidApp.CHIP_TOOL:
@@ -79,7 +80,15 @@ class AndroidApp(Enum):
             return "tv-casting"
         if self == AndroidApp.VIRTUAL_DEVICE_APP:
             return "virtual-device-app"
+        if self == AndroidApp.CAMERA_CONTROLLER:
+            return "MatterCameraController"
         raise Exception("Unknown app type: %r" % self)
+
+    def GetAndroidProjectPath(self, root):
+        """Returns the path to the Android project directory (e.g. for gradlew -p)."""
+        if self == AndroidApp.CAMERA_CONTROLLER:
+            return os.path.join(root, "examples", "camera-controller", "android")
+        return os.path.join(root, "examples", "android", self.AppName())
 
     def AppGnArgs(self):
         gn_args = {}
@@ -90,7 +99,7 @@ class AndroidApp(Enum):
             gn_args["chip_config_network_layer_ble"] = False
         elif self == AndroidApp.VIRTUAL_DEVICE_APP:
             gn_args["chip_config_network_layer_ble"] = True
-        elif self == AndroidApp.CHIP_TOOL:
+        elif self == AndroidApp.CHIP_TOOL or self == AndroidApp.CAMERA_CONTROLLER:
             gn_args["chip_enable_nfc_based_commissioning"] = True
             gn_args["chip_build_controller_dynamic_server"] = True
         return gn_args
@@ -266,16 +275,13 @@ class AndroidBuilder(Builder):
 
         # We do NOT use python builtins for copy, so that the 'execution commands' are available
         # when using dry run.
+        project_path = self.app.GetAndroidProjectPath(self.root)
         jnilibs_dir = os.path.join(
-            self.root,
-            "examples/android/",
-            self.app.AppName(),
+            project_path,
             "app/libs/jniLibs",
             self.board.AbiName(),
         )
-        libs_dir = os.path.join(
-            self.root, "examples/android/", self.app.AppName(), "app/libs"
-        )
+        libs_dir = os.path.join(project_path, "app/libs")
         self._Execute(
             ["mkdir", "-p", jnilibs_dir], title="Prepare Native libs " + self.identifier
         )
@@ -350,12 +356,12 @@ class AndroidBuilder(Builder):
 
     def gradlewBuildSrcAndroid(self):
         # App compilation
+        project_path = self.app.GetAndroidProjectPath(self.root)
         self._Execute(
             [
-                "%s/examples/android/%s/gradlew" % (
-                    self.root, self.app.AppName()),
+                os.path.join(project_path, "gradlew"),
                 "-p",
-                "%s/examples/android/%s" % (self.root, self.app.AppName()),
+                project_path,
                 "-PmatterBuildSrcDir=%s" % self.output_dir,
                 "-PmatterSdkSourceBuild=false",
                 "-PbuildDir=%s" % self.output_dir,
@@ -495,12 +501,12 @@ class AndroidBuilder(Builder):
         if self.board.IsIde():
             # App compilation IDE
             # TODO: Android Gradle with module and -PbuildDir= will caused issue, remove -PbuildDir=
+            project_path = self.app.GetAndroidProjectPath(self.root)
             self._Execute(
                 [
-                    "%s/examples/android/%s/gradlew" % (
-                        self.root, self.app.AppName()),
+                    os.path.join(project_path, "gradlew"),
                     "-p",
-                    "%s/examples/android/%s" % (self.root, self.app.AppName()),
+                    project_path,
                     "-PmatterBuildSrcDir=%s" % self.output_dir,
                     "-PmatterSdkSourceBuild=true",
                     "-PmatterSourceBuildAbiFilters=%s" % self.board.AbiName(),

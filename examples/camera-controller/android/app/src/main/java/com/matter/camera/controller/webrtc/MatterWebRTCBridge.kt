@@ -19,10 +19,13 @@ package com.matter.camera.controller.webrtc
 import android.content.Context
 import android.util.Log
 import chip.devicecontroller.ChipClusters
+import chip.devicecontroller.ChipStructs
 import com.matter.camera.controller.ChipClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.webrtc.IceCandidate
+import java.util.ArrayList
+import java.util.Optional
 
 /**
  * Bridges the Matter WebRTC Transport Provider/Requestor cluster commands
@@ -36,6 +39,7 @@ class MatterWebRTCBridge(private val context: Context) {
     companion object {
         private const val TAG = "MatterWebRTCBridge"
         private const val CAMERA_ENDPOINT_ID = 1
+        private const val REQUESTOR_ENDPOINT_ID = 1
     }
 
     interface BridgeCallback {
@@ -70,15 +74,18 @@ class MatterWebRTCBridge(private val context: Context) {
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.WebRTCTransportProviderCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
+            val videoOpt = videoStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
+            val audioOpt = audioStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
+
             cluster.provideOffer(
                 object : ChipClusters.WebRTCTransportProviderCluster.ProvideOfferResponseCallback {
                     override fun onSuccess(
-                        webRTCSessionID: Int,
-                        videoStreamID: Int,
-                        audioStreamID: Int
+                        webRTCSessionID: Int?,
+                        videoStreamID: java.util.Optional<Int>?,
+                        audioStreamID: java.util.Optional<Int>?
                     ) {
                         Log.i(TAG, "ProvideOffer response: sessionId=$webRTCSessionID")
-                        callback?.onOfferSent(webRTCSessionID)
+                        callback?.onOfferSent(webRTCSessionID ?: 0)
                     }
 
                     override fun onError(error: Exception) {
@@ -86,12 +93,18 @@ class MatterWebRTCBridge(private val context: Context) {
                         callback?.onError("ProvideOffer failed: ${error.message}")
                     }
                 },
-                null, // webRTCSessionID (null for new session)
+                null,
                 sdpOffer,
                 streamUsage,
-                videoStreamId,
-                audioStreamId,
-                null  // ICEServers
+                REQUESTOR_ENDPOINT_ID,
+                videoOpt,
+                audioOpt,
+                Optional.empty<ArrayList<ChipStructs.WebRTCTransportProviderClusterICEServerStruct>>(),
+                Optional.empty<String>(),
+                Optional.empty<Boolean>(),
+                Optional.empty<ChipStructs.WebRTCTransportProviderClusterSFrameStruct>(),
+                Optional.empty<ArrayList<Int>>(),
+                Optional.empty<ArrayList<Int>>()
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send ProvideOffer", e)
@@ -151,8 +164,16 @@ class MatterWebRTCBridge(private val context: Context) {
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.WebRTCTransportProviderCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
-            // Convert Android IceCandidates to the format expected by the Matter cluster
-            val candidateStrings = candidates.map { it.sdp }
+            val structs = ArrayList<ChipStructs.WebRTCTransportProviderClusterICECandidateStruct>()
+            for (c in candidates) {
+                structs.add(
+                    ChipStructs.WebRTCTransportProviderClusterICECandidateStruct(
+                        c.sdp,
+                        c.sdpMid,
+                        c.sdpMLineIndex
+                    )
+                )
+            }
 
             cluster.provideICECandidates(
                 object : ChipClusters.DefaultClusterCallback {
@@ -166,7 +187,7 @@ class MatterWebRTCBridge(private val context: Context) {
                     }
                 },
                 sessionId,
-                candidateStrings
+                structs
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send ICE candidates", e)
@@ -191,16 +212,19 @@ class MatterWebRTCBridge(private val context: Context) {
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.WebRTCTransportProviderCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
+            val videoOpt = videoStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
+            val audioOpt = audioStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
+
             cluster.solicitOffer(
                 object : ChipClusters.WebRTCTransportProviderCluster.SolicitOfferResponseCallback {
                     override fun onSuccess(
-                        webRTCSessionID: Int,
-                        deferredOffer: Boolean,
-                        videoStreamID: Int?,
-                        audioStreamID: Int?
+                        webRTCSessionID: Int?,
+                        deferredOffer: Boolean?,
+                        videoStreamID: java.util.Optional<Int>?,
+                        audioStreamID: java.util.Optional<Int>?
                     ) {
                         Log.i(TAG, "SolicitOffer response: sessionId=$webRTCSessionID, deferred=$deferredOffer")
-                        callback?.onOfferSent(webRTCSessionID)
+                        callback?.onOfferSent(webRTCSessionID ?: 0)
                     }
 
                     override fun onError(error: Exception) {
@@ -209,8 +233,15 @@ class MatterWebRTCBridge(private val context: Context) {
                     }
                 },
                 streamUsage,
-                videoStreamId,
-                audioStreamId
+                REQUESTOR_ENDPOINT_ID,
+                videoOpt,
+                audioOpt,
+                Optional.empty<ArrayList<ChipStructs.WebRTCTransportProviderClusterICEServerStruct>>(),
+                Optional.empty<String>(),
+                Optional.empty<Boolean>(),
+                Optional.empty<ChipStructs.WebRTCTransportProviderClusterSFrameStruct>(),
+                Optional.empty<ArrayList<Int>>(),
+                Optional.empty<ArrayList<Int>>()
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send SolicitOffer", e)

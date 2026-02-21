@@ -410,6 +410,7 @@ def BuildAndroidTarget():
     # apps
     target.AppendFixedTargets([
         TargetPart('chip-tool', app=AndroidApp.CHIP_TOOL),
+        TargetPart('camera-controller', app=AndroidApp.CAMERA_CONTROLLER),
         TargetPart('chip-test', app=AndroidApp.CHIP_TEST),
         TargetPart('tv-server', app=AndroidApp.TV_SERVER),
         TargetPart('tv-casting-app', app=AndroidApp.TV_CASTING_APP),

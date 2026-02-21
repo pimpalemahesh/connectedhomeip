@@ -28,6 +28,7 @@ import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceViewRenderer
@@ -158,13 +159,13 @@ class WebRTCManager(private val context: Context) {
         // Add receive-only transceiver for video (H.264)
         peerConnection?.addTransceiver(
             org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
-            PeerConnection.RtpTransceiverInit(PeerConnection.RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         )
 
         // Add receive-only transceiver for audio
         peerConnection?.addTransceiver(
             org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
-            PeerConnection.RtpTransceiverInit(PeerConnection.RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
         )
 
         val constraints = MediaConstraints().apply {

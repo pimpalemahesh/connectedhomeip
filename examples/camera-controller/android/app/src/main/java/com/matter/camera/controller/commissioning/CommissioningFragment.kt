@@ -31,7 +31,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import chip.devicecontroller.ChipDeviceController
-import chip.devicecontroller.NetworkCredentials
+import chip.devicecontroller.CommissionParameters
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.matter.camera.controller.ChipClient
@@ -178,21 +178,16 @@ class CommissioningFragment : Fragment() {
             return
         }
 
-        val setupCode = setupCodeText.toLongOrNull() ?: run {
-            binding.inputSetupCode.error = "Invalid code"
-            return
-        }
-
         val discriminator = discriminatorText?.toIntOrNull()
 
         showCommissioningProgress()
 
         val deviceController = ChipClient.getDeviceController(requireContext())
         deviceController.setCompletionListener(object : ChipDeviceController.CompletionListener {
-            override fun onCommissioningComplete(nodeId: Long, errorCode: Long) {
+            override fun onCommissioningComplete(commissionedNodeId: Long, errorCode: Long) {
                 activity?.runOnUiThread {
                     if (errorCode == 0L) {
-                        onCommissioningSuccess(nodeId, setupCode, discriminator ?: 0)
+                        onCommissioningSuccess(commissionedNodeId, setupCodeText, discriminator ?: 0)
                     } else {
                         onCommissioningFailed("Error code: $errorCode")
                     }
@@ -216,39 +211,35 @@ class CommissioningFragment : Fragment() {
             }
 
             override fun onCloseBleComplete() {}
+
             override fun onError(error: Throwable?) {
                 activity?.runOnUiThread {
                     onCommissioningFailed(error?.message ?: "Unknown error")
                 }
             }
 
-            override fun onFirmwareVersionInfo(p0: Int, p1: String?, p2: Long, p3: String?) {}
+            override fun onConnectDeviceComplete() {}
+            override fun onReadCommissioningInfo(vendorId: Int, productId: Int, wifiEndpointId: Int, threadEndpointId: Int) {}
+            override fun onCommissioningStatusUpdate(nId: Long, stage: String, errorCode: Long) {}
+            override fun onCommissioningStageStart(nId: Long, stage: String) {}
             override fun onOpCSRGenerationComplete(csr: ByteArray?) {}
-            override fun onReadCommissioningInfo(p0: Int, p1: Int, p2: Int, p3: Int) {}
             override fun onICDRegistrationInfoRequired() {}
             override fun onICDRegistrationComplete(errorCode: Long, icdNodeInfo: chip.devicecontroller.ICDDeviceInfo?) {}
         })
 
         try {
-            if (discriminator != null) {
-                deviceController.pairDeviceWithAddress(
-                    nodeId,
-                    "0.0.0.0",
-                    5540,
-                    discriminator,
-                    setupCode,
-                    null
-                )
-            } else {
-                // On-network commissioning
-                deviceController.pairDevice(
-                    nodeId,
-                    5540,
-                    setupCode.toInt(),
-                    null,
-                    NetworkCredentials()
-                )
-            }
+            val params = CommissionParameters.Builder()
+                .setCsrNonce(null)
+                .setNetworkCredentials(null)
+                .setICDRegistrationInfo(null)
+                .build()
+            deviceController.pairDeviceWithCode(
+                nodeId,
+                setupCodeText,
+                false,
+                true,
+                params
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start commissioning", e)
             onCommissioningFailed(e.message ?: "Failed to start commissioning")
@@ -266,11 +257,11 @@ class CommissioningFragment : Fragment() {
         binding.btnCommission.isEnabled = false
     }
 
-    private fun onCommissioningSuccess(nodeId: Long, setupCode: Long, discriminator: Int) {
+    private fun onCommissioningSuccess(nodeId: Long, setupCode: String, discriminator: Int) {
         val device = CameraDevice(
             nodeId = nodeId,
             name = "Camera #$nodeId",
-            setupCode = setupCode,
+            setupCode = setupCode.toLongOrNull() ?: 0L,
             discriminator = discriminator,
             isConnected = true
         )

@@ -64,18 +64,59 @@ def FindCommand(command):
         # try all extensions from PATHEXT when resolving the full path.
         command, ext = os.path.splitext(command)
         if not ext:
-            exts = os.environ['PATHEXT'].split(os.path.pathsep)
+            exts = os.environ.get('PATHEXT', '.exe').split(os.path.pathsep)
         else:
             exts = [ext]
     else:
         exts = ['']
 
-    for path in os.environ['PATH'].split(os.path.pathsep):
+    for path in os.environ.get('PATH', '').split(os.path.pathsep):
         for ext in exts:
             path = os.path.join(path, command) + ext
             if IsExecutable(path):
                 return path
 
+    return None
+
+
+def FindChipRoot():
+    """Find the CHIP repo root by walking up from cwd looking for third_party/java_deps."""
+    cwd = os.getcwd()
+    for _ in range(10):
+        if cwd and os.path.isdir(os.path.join(cwd, 'third_party', 'java_deps')):
+            return cwd
+        parent = os.path.dirname(cwd)
+        if parent == cwd:
+            break
+        cwd = parent
+    return None
+
+
+def FindKotlinc():
+    """Find kotlinc: KOTLINC_PATH, KOTLINC_HOME/bin/kotlinc, PATH, or third_party/java_deps/kotlin_compiler/bin/kotlinc."""
+    # 1. Explicit executable path
+    path = os.environ.get('KOTLINC_PATH', '').strip()
+    if path and IsExecutable(path):
+        return path
+    # 2. Kotlin home directory
+    home = os.environ.get('KOTLINC_HOME', '').strip()
+    if home:
+        for name in ('bin/kotlinc', 'bin/kotlinc.bat'):
+            p = os.path.join(home, name)
+            if IsExecutable(p):
+                return p
+    # 3. PATH
+    path = FindCommand('kotlinc')
+    if path:
+        return path
+    # 4. Bundled under third_party/java_deps/kotlin_compiler (set up by set_up_java_deps.sh)
+    root = FindChipRoot()
+    if root:
+        for subpath in ('third_party/java_deps/kotlin_compiler/bin/kotlinc',
+                        'third_party/java_deps/kotlin_compiler/kotlinc/bin/kotlinc'):
+            p = os.path.join(root, subpath)
+            if IsExecutable(p):
+                return p
     return None
 
 
@@ -92,9 +133,15 @@ def ComputeClasspath(build_config_json):
 
 
 def main():
-    kotlin_path = FindCommand('kotlinc')
+    kotlin_path = FindKotlinc()
     if not kotlin_path:
-        sys.stderr.write('kotlinc: command not found\n')
+        sys.stderr.write(
+            'kotlinc: command not found\n'
+            '  Install Kotlin and add kotlinc to PATH, e.g.:\n'
+            '    sdk install kotlin   # or: https://kotlinlang.org/docs/command-line.html\n'
+            '  Or set KOTLINC_HOME to your Kotlin install directory.\n'
+            '  Or run from repo root: third_party/java_deps/set_up_java_deps.sh\n'
+            '    (downloads Kotlin compiler into third_party/java_deps/kotlin_compiler)\n')
         sys.exit(EXIT_FAILURE)
 
     parser = argparse.ArgumentParser('Kotkinc runner')
@@ -122,7 +169,7 @@ def main():
 
     build_config_json = ReadBuildConfig(args.build_config)
     classpath = ComputeClasspath(build_config_json)
-    kotlin_args = [kotlin_path]
+    kotlin_args = [os.path.abspath(kotlin_path)]
     if classpath:
         kotlin_args += ["-classpath", classpath]
 

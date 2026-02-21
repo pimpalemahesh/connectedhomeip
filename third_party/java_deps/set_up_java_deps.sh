@@ -45,3 +45,20 @@ download_jar "repo1.maven.org" "org/json/json/20220924" "json-20220924.jar"
 # Unit test requirements
 download_jar "repo1.maven.org" "org/hamcrest/hamcrest-all/1.3" "hamcrest-all-1.3.jar"
 download_jar "dist.wso2.org" "com/google/common/google-collect/1.0-rc1/" "google-collect-1.0-rc1.jar"
+
+# Kotlin compiler (required for Android/Java controller builds that compile Kotlin sources)
+KOTLIN_COMPILER_VERSION=1.9.24
+KOTLIN_COMPILER_DIR=third_party/java_deps/kotlin_compiler
+if [ ! -x "$KOTLIN_COMPILER_DIR/bin/kotlinc" ]; then
+    echo "Downloading Kotlin compiler $KOTLIN_COMPILER_VERSION for controller Java build..."
+    (cd third_party/java_deps/artifacts && \
+        curl --fail --location --silent --show-error -o kotlin-compiler.zip \
+            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_COMPILER_VERSION}/kotlin-compiler-${KOTLIN_COMPILER_VERSION}.zip" && \
+        unzip -q -o kotlin-compiler.zip && \
+        rm -f kotlin-compiler.zip)
+    rm -rf "$KOTLIN_COMPILER_DIR"
+    # GitHub zip extracts as "kotlinc", not kotlin-compiler-${version}
+    mv "third_party/java_deps/artifacts/kotlinc" "$KOTLIN_COMPILER_DIR"
+    chmod +x "$KOTLIN_COMPILER_DIR/bin/kotlinc" 2>/dev/null || true
+    echo "Kotlin compiler installed at $KOTLIN_COMPILER_DIR"
+fi

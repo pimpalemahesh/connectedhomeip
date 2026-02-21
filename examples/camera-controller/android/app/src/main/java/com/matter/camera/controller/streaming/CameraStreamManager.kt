@@ -19,9 +19,11 @@ package com.matter.camera.controller.streaming
 import android.content.Context
 import android.util.Log
 import chip.devicecontroller.ChipClusters
+import chip.devicecontroller.ChipStructs
 import com.matter.camera.controller.ChipClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Optional
 
 /**
  * Manages camera AV stream allocation/deallocation via Matter cluster commands.
@@ -36,6 +38,9 @@ class CameraStreamManager(private val context: Context) {
         // StreamUsageEnum values from the Matter spec
         const val STREAM_USAGE_LIVE_VIEW = 3
         const val STREAM_USAGE_RECORDING = 1
+
+        // VideoCodecEnum: 0 = H.264
+        private const val VIDEO_CODEC_H264 = 0
     }
 
     interface StreamCallback {
@@ -62,6 +67,13 @@ class CameraStreamManager(private val context: Context) {
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.CameraAvStreamManagementCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
+            val width = minWidth ?: 640
+            val height = minHeight ?: 480
+            val minRes = ChipStructs.CameraAvStreamManagementClusterVideoResolutionStruct(width, height)
+            val maxRes = ChipStructs.CameraAvStreamManagementClusterVideoResolutionStruct(width, height)
+            val frameRate = minFrameRate ?: 30
+            val bitRate = minBitRate ?: 3000L
+
             cluster.videoStreamAllocate(
                 object : ChipClusters.CameraAvStreamManagementCluster.VideoStreamAllocateResponseCallback {
                     override fun onSuccess(videoStreamID: Int) {
@@ -75,10 +87,16 @@ class CameraStreamManager(private val context: Context) {
                     }
                 },
                 streamUsage,
-                minWidth ?: 0,
-                minHeight ?: 0,
-                minFrameRate ?: 0,
-                minBitRate ?: 0
+                VIDEO_CODEC_H264,
+                frameRate,
+                frameRate,
+                minRes,
+                maxRes,
+                bitRate,
+                bitRate,
+                1,
+                Optional.empty(),
+                Optional.empty()
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to allocate video stream", e)

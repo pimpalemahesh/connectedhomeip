@@ -12,6 +12,10 @@
     <mapping directory="$PROJECT_DIR$/../../../third_party/asr/components" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/boringssl/repo/src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/bouffalolab/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/bouffalolab/repo/components" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/bouffalolab/repo/customer_app" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/bouffalolab/repo/docs" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/bouffalolab/repo/tools" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/cirque/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/editline/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/freertos/repo" vcs="Git" />
@@ -46,6 +50,18 @@
     <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/psoc6/psoc6_sdk/libs/wifi-connection-manager" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/psoc6/psoc6_sdk/libs/wifi-host-driver" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/30739A0" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/30739B2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/CYW30739B2-P5-EVK-01" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/CYW30739B2-P5-EVK-02" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/CYW30739B2-P5-EVK-03" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/CYW930739M2EVB-01" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/cyw30739/repos/CYW930739M2EVB-02" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/repos/btsdk-include" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/repos/btsdk-tools" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/repos/display-oled-ssd1306" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/repos/emwin" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/repos/matter-wpan-sdk/repos/wpan-sdk" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/infineon/trustm/optiga-trust-m" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/jsoncpp/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/libdatachannel/repo" vcs="Git" />
@@ -66,14 +82,46 @@
     <mapping directory="$PROJECT_DIR$/../../../third_party/nlio/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/nxp/nxp_matter_support" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-efr32" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-efr32/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-efr32/third_party/silabs/gecko_sdk" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/btsdk-include" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/btsdk-tools" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/30739a0" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/30739b2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/bsp/cyw30739b2-p5-evk-01/TARGET_CYW30739B2-P5-EVK-01" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/bsp/cyw30739b2-p5-evk-02/TARGET_CYW30739B2-P5-EVK-02" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/bsp/cyw30739b2-p5-evk-03/TARGET_CYW30739B2-P5-EVK-03" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/bsp/cyw930739m2evb-01/TARGET_CYW930739M2EVB-01" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/platform/cyw30739/bsp/cyw930739m2evb-02/TARGET_CYW930739M2EVB-02" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ifx/third_party/infineon/wpan-sdk" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-nxp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-nxp/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-nxp/third_party/nxp_matter_support" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-qorvo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-qorvo/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-qorvo/third_party/Qorvo/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-realtek" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-realtek/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-realtek/third_party/Realtek/rtl87x2g_sdk" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-stm32" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/openthread" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/third_party/freertos/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/third_party/freertos/repo/portable/ThirdParty/Community-Supported-Ports" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/third_party/freertos/repo/portable/ThirdParty/Partner-Supported-Ports" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/third_party/mbedtls/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/ot-ti/third_party/ti_simplelink_sdk/repo_cc13xx_cc26xx" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/repo/third_party/mbedtls/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/openthread/repo/third_party/mbedtls/repo/framework" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo/third_party/cJSON/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo/third_party/cpp-httplib/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo/third_party/openthread/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo/third_party/openthread/repo/third_party/mbedtls/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-br-posix/repo/third_party/openthread/repo/third_party/mbedtls/repo/framework" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/COSE-C/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/cn-cbor/repo" vcs="Git" />
@@ -82,6 +130,7 @@
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/json/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/libevent/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/mbedtls/repo" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/mbedtls/repo/framework" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/ot-commissioner/repo/third_party/mdns/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/perfetto/repo" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../../third_party/pigweed/repo" vcs="Git" />

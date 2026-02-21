@@ -21,11 +21,10 @@ android {
                 abiFilters = []
                 abiFilters.addAll(matterSourceBuildAbiFilters.split(';').collect { it as String })
             }
-        }
-
-        externalNativeBuild {
-            cmake {
-                targets "default"
+            externalNativeBuild {
+                cmake {
+                    targets "default"
+                }
             }
         }
     }
@@ -90,7 +89,7 @@ dependencies {
     implementation 'androidx.preference:preference-ktx:1.2.1'
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
-    // WebRTC
+    // WebRTC for video rendering (official Google WebRTC for Android)
     implementation 'io.getstream:stream-webrtc-android:1.1.1'
 
     // QR code scanning

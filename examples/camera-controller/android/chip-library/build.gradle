@@ -30,11 +30,9 @@ android {
     sourceSets {
         main {
             java.srcDirs = [
-                    '../../../setup_payload/java/src',
-                    '../../../controller/java/zap-generated',
-                    '../../../controller/java/src',
-                    '../../../platform/android/java',
-                    '../app/src/main/java/com/matter/camera/controller'
+                    '../../../../src/controller/java/src',
+                    '../../../../src/controller/java/generated/java',
+                    '../../../../src/platform/android/java'
             ]
         }
     }

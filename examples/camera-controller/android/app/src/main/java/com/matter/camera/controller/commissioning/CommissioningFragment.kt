@@ -39,6 +39,8 @@ import com.google.mlkit.vision.common.InputImage
 import com.matter.camera.controller.ChipClient
 import com.matter.camera.controller.R
 import com.matter.camera.controller.databinding.FragmentCommissioningBinding
+import com.matter.camera.controller.debug.DebugLog
+import com.matter.camera.controller.debug.DebugLogDialogFragment
 import com.matter.camera.controller.devices.CameraDevice
 import com.matter.camera.controller.devices.DeviceRepository
 import java.util.concurrent.Executors
@@ -62,6 +64,11 @@ class CommissioningFragment : Fragment() {
     private fun isDebugBuild(): Boolean =
         (requireContext().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
+    private fun logDebug(message: String) {
+        if (isDebugBuild()) Log.d(TAG, message)
+        if (DebugLog.isEnabled) DebugLog.add("$TAG: $message")
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -76,6 +83,14 @@ class CommissioningFragment : Fragment() {
 
         binding.btnScanQr.setOnClickListener { toggleQrScanner() }
         binding.btnCommission.setOnClickListener { startCommissioning() }
+
+        binding.debugModeSwitch.isChecked = DebugLog.isEnabled
+        binding.debugModeSwitch.setOnCheckedChangeListener { _, isChecked ->
+            DebugLog.setEnabled(isChecked)
+        }
+        binding.btnViewDebugLog.setOnClickListener {
+            DebugLogDialogFragment().show(parentFragmentManager, "DebugLog")
+        }
     }
 
     private fun toggleQrScanner() {
@@ -194,63 +209,87 @@ class CommissioningFragment : Fragment() {
             return
         }
 
-        val discriminator = discriminatorText?.toIntOrNull()
+        // Use only setup code for pairing: SDK accepts QR payload (MT:...) or 11-digit manual code. Discriminator is encoded in both; do not combine.
+        val setupCodeOnly = setupCodeText
+        if (setupCodeOnly.startsWith("MT:") || setupCodeOnly.startsWith("mt:")) {
+            // QR payload – use as-is
+        } else {
+            // Manual code: must be digits only (last digit is Verhoeff check). If user pasted something else, we'll get integrity error.
+            if (!setupCodeOnly.all { it.isDigit() }) {
+                binding.inputSetupCode.error = getString(R.string.setup_code_integrity_failed)
+                return
+            }
+            if (setupCodeOnly.length != 11 && setupCodeOnly.length != 21) {
+                binding.inputSetupCode.error = "Manual code must be 11 or 21 digits"
+                return
+            }
+        }
 
         if (isDebugBuild()) {
-            Log.d(TAG, "Starting commissioning: nodeId=$nodeId, setupCodeLength=${setupCodeText.length}, discriminator=$discriminator")
+            Log.d(TAG, "Starting commissioning: nodeId=$nodeId, setupCodeLength=${setupCodeOnly.length}")
         }
+        logDebug("Starting commissioning: nodeId=$nodeId")
 
         showCommissioningProgress()
 
         val deviceController = ChipClient.getDeviceController(requireContext())
         deviceController.setCompletionListener(object : ChipDeviceController.CompletionListener {
             override fun onCommissioningComplete(commissionedNodeId: Long, errorCode: Long) {
-                if (isDebugBuild()) {
-                    Log.d(TAG, "onCommissioningComplete: nodeId=$commissionedNodeId, errorCode=$errorCode")
-                }
+                logDebug("onCommissioningComplete: nodeId=$commissionedNodeId, errorCode=$errorCode")
                 activity?.runOnUiThread {
                     if (errorCode == 0L) {
-                        onCommissioningSuccess(commissionedNodeId, setupCodeText, discriminator ?: 0)
+                        onCommissioningSuccess(commissionedNodeId, setupCodeText, discriminatorText?.toIntOrNull() ?: 0)
                     } else {
-                        onCommissioningFailed("Error code: $errorCode")
+                        val userMessage = when (errorCode) {
+                            32L, 45L -> getString(R.string.commissioning_failed_timeout)
+                            else -> "Error code: $errorCode"
+                        }
+                        onCommissioningFailed(userMessage)
                     }
                 }
             }
 
             override fun onStatusUpdate(status: Int) {
-                if (isDebugBuild()) Log.d(TAG, "Commissioning status: $status")
+                logDebug("Commissioning status: $status")
             }
 
             override fun onPairingComplete(errorCode: Long) {
-                if (isDebugBuild()) Log.d(TAG, "Pairing complete: errorCode=$errorCode")
+                logDebug("Pairing complete: errorCode=$errorCode")
             }
 
             override fun onPairingDeleted(errorCode: Long) {
-                if (isDebugBuild()) Log.d(TAG, "Pairing deleted: errorCode=$errorCode")
+                logDebug("Pairing deleted: errorCode=$errorCode")
             }
 
             override fun onNotifyChipConnectionClosed() {
-                if (isDebugBuild()) Log.d(TAG, "Connection closed")
+                logDebug("Connection closed")
             }
 
             override fun onCloseBleComplete() {}
 
             override fun onError(error: Throwable?) {
                 if (isDebugBuild()) Log.d(TAG, "Commissioning error", error)
+                logDebug("Error: ${error?.message}")
                 activity?.runOnUiThread {
-                    onCommissioningFailed(error?.message ?: "Unknown error")
+                    val msg = error?.message ?: "Unknown error"
+                    val userMessage = if (msg.contains("Integrity check failed", ignoreCase = true)) {
+                        getString(R.string.setup_code_integrity_failed)
+                    } else {
+                        msg
+                    }
+                    onCommissioningFailed(userMessage)
                 }
             }
 
             override fun onConnectDeviceComplete() {}
             override fun onReadCommissioningInfo(vendorId: Int, productId: Int, wifiEndpointId: Int, threadEndpointId: Int) {
-                if (isDebugBuild()) Log.d(TAG, "ReadCommissioningInfo: vendorId=$vendorId productId=$productId")
+                logDebug("ReadCommissioningInfo: vendorId=$vendorId productId=$productId")
             }
             override fun onCommissioningStatusUpdate(nId: Long, stage: String, errorCode: Long) {
-                if (isDebugBuild()) Log.d(TAG, "CommissioningStatusUpdate: nodeId=$nId stage=$stage errorCode=$errorCode")
+                logDebug("CommissioningStatusUpdate: nodeId=$nId stage=$stage errorCode=$errorCode")
             }
             override fun onCommissioningStageStart(nId: Long, stage: String) {
-                if (isDebugBuild()) Log.d(TAG, "CommissioningStageStart: nodeId=$nId stage=$stage")
+                logDebug("CommissioningStageStart: nodeId=$nId stage=$stage")
             }
             override fun onOpCSRGenerationComplete(csr: ByteArray?) {}
             override fun onICDRegistrationInfoRequired() {}
@@ -266,12 +305,12 @@ class CommissioningFragment : Fragment() {
             // discoverOnce=false: allow rediscovery if needed; useOnlyOnNetworkDiscovery=false: use BLE to find device (required for most commissioning)
             deviceController.pairDeviceWithCode(
                 nodeId,
-                setupCodeText,
+                setupCodeOnly,
                 false,  // discoverOnce
                 false,  // useOnlyOnNetworkDiscovery - must be false to discover over BLE
                 params
             )
-            if (isDebugBuild()) Log.d(TAG, "pairDeviceWithCode invoked, waiting for discovery and PASE")
+            logDebug("pairDeviceWithCode invoked, waiting for discovery and PASE")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start commissioning", e)
             onCommissioningFailed(e.message ?: "Failed to start commissioning")
@@ -300,7 +339,7 @@ class CommissioningFragment : Fragment() {
         DeviceRepository.addDevice(requireContext(), device)
 
         binding.commissioningProgress.visibility = View.GONE
-        if (isDebugBuild()) Log.d(TAG, "Commissioning success: nodeId=$nodeId")
+        logDebug("Commissioning success: nodeId=$nodeId")
         binding.statusText.text = getString(R.string.commissioning_success)
         binding.statusText.setTextColor(
             ContextCompat.getColor(requireContext(), R.color.success)

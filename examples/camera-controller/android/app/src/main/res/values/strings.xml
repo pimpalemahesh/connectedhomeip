@@ -28,6 +28,8 @@
     <string name="commissioning_success">Device commissioned successfully!</string>
     <string name="bluetooth_required_for_commissioning">Turn on Bluetooth to commission devices. Matter uses BLE to discover and pair.</string>
     <string name="commissioning_failed">Commissioning failed: %s</string>
+    <string name="commissioning_failed_timeout">Commissioning timed out (device fail-safe expired). Keep the device close, ensure Bluetooth is on, and try again.</string>
+    <string name="setup_code_integrity_failed">Invalid setup code: checksum failed. Use the exact QR payload (MT:…) or the full 11-digit manual code from the device. Do not mix with discriminator.</string>
     <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
 
     <!-- Live View Screen -->
@@ -51,6 +53,14 @@
     <string name="webrtc_session_failed">WebRTC session failed: %s</string>
     <string name="video_stream_allocated">Video stream allocated (ID: %d)</string>
     <string name="video_stream_failed">Failed to allocate video stream: %s</string>
+
+    <!-- Debug log -->
+    <string name="debug_mode">Enable debug mode</string>
+    <string name="view_debug_log">View debug log</string>
+    <string name="debug_log_title">Commissioning log</string>
+    <string name="debug_log_empty">No log entries. Enable debug mode and try commissioning.</string>
+    <string name="debug_log_clear">Clear</string>
+    <string name="close">Close</string>
 
     <!-- Common -->
     <string name="ok">OK</string>

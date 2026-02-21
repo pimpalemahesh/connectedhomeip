@@ -55,6 +55,7 @@ class CommissioningFragment : Fragment() {
     private val binding get() = _binding!!
 
     private var isScannerActive = false
+    private var commissioningNodeId: Long? = null
 
     companion object {
         private const val TAG = "CommissioningFragment"
@@ -91,6 +92,7 @@ class CommissioningFragment : Fragment() {
         binding.btnViewDebugLog.setOnClickListener {
             DebugLogDialogFragment().show(parentFragmentManager, "DebugLog")
         }
+        binding.btnStopCommissioning.setOnClickListener { stopCommissioning() }
     }
 
     private fun toggleQrScanner() {
@@ -171,25 +173,33 @@ class CommissioningFragment : Fragment() {
     }
 
     private fun handleQrCode(qrCode: String) {
-        // Matter QR codes typically contain the setup payload
-        // For now, extract the setup code and populate the fields
-        Log.i(TAG, "Processing QR code: $qrCode")
-        Toast.makeText(requireContext(), "QR code scanned: $qrCode", Toast.LENGTH_SHORT).show()
-        binding.inputSetupCode.setText(qrCode)
+        Log.i(TAG, "Processing QR code")
+        Toast.makeText(requireContext(), "QR code scanned", Toast.LENGTH_SHORT).show()
+        binding.inputQrOrManual.setText(qrCode)
+    }
+
+    private fun stopCommissioning() {
+        commissioningNodeId?.let { nodeId ->
+            logDebug("Stopping commissioning for nodeId=$nodeId")
+            try {
+                ChipClient.getDeviceController(requireContext()).stopDevicePairing(nodeId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Stop commissioning failed", e)
+            }
+            commissioningNodeId = null
+        }
+        hideCommissioningProgress()
     }
 
     private fun startCommissioning() {
         val nodeIdText = binding.inputNodeId.text?.toString()?.trim()
-        val setupCodeText = binding.inputSetupCode.text?.toString()?.trim()
+        val passcodeText = binding.inputPasscode.text?.toString()?.trim()
         val discriminatorText = binding.inputDiscriminator.text?.toString()?.trim()
+        val qrOrManualText = binding.inputQrOrManual.text?.toString()?.trim()
+        val useNetworkOnly = binding.checkboxNetworkOnly.isChecked
 
         if (nodeIdText.isNullOrBlank()) {
             binding.inputNodeId.error = "Required"
-            return
-        }
-
-        if (setupCodeText.isNullOrBlank()) {
-            binding.inputSetupCode.error = "Required"
             return
         }
 
@@ -198,38 +208,53 @@ class CommissioningFragment : Fragment() {
             return
         }
 
-        // Ensure Bluetooth is on for BLE commissioning (required on Android for device discovery)
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            Toast.makeText(
-                requireContext(),
-                getString(R.string.bluetooth_required_for_commissioning),
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        // Use only setup code for pairing: SDK accepts QR payload (MT:...) or 11-digit manual code. Discriminator is encoded in both; do not combine.
-        val setupCodeOnly = setupCodeText
-        if (setupCodeOnly.startsWith("MT:") || setupCodeOnly.startsWith("mt:")) {
-            // QR payload – use as-is
-        } else {
-            // Manual code: must be digits only (last digit is Verhoeff check). If user pasted something else, we'll get integrity error.
-            if (!setupCodeOnly.all { it.isDigit() }) {
-                binding.inputSetupCode.error = getString(R.string.setup_code_integrity_failed)
+        val setupCodeOnly: String = when {
+            !qrOrManualText.isNullOrBlank() -> {
+                if (qrOrManualText.startsWith("MT:") || qrOrManualText.startsWith("mt:")) {
+                    qrOrManualText
+                } else if (qrOrManualText.all { it.isDigit() } && (qrOrManualText.length == 11 || qrOrManualText.length == 21)) {
+                    qrOrManualText
+                } else {
+                    binding.inputQrOrManual.error = getString(R.string.setup_code_integrity_failed)
+                    return
+                }
+            }
+            !passcodeText.isNullOrBlank() -> {
+                if (passcodeText.length != 8 || !passcodeText.all { it.isDigit() }) {
+                    binding.inputPasscode.error = "Passcode must be 8 digits"
+                    return
+                }
+                val disc = discriminatorText?.toIntOrNull()?.coerceIn(0, 15) ?: 0
+                val passcode = passcodeText.toLongOrNull() ?: run {
+                    binding.inputPasscode.error = "Invalid passcode"
+                    return
+                }
+                ManualSetupCodeGenerator.generate(passcode, disc) ?: run {
+                    binding.inputPasscode.error = "Invalid passcode (use 1–99999998)"
+                    return
+                }
+            }
+            else -> {
+                binding.inputPasscode.error = "Enter passcode or paste QR / 11-digit code"
                 return
             }
-            if (setupCodeOnly.length != 11 && setupCodeOnly.length != 21) {
-                binding.inputSetupCode.error = "Manual code must be 11 or 21 digits"
+        }
+
+        if (!useNetworkOnly) {
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.bluetooth_required_for_commissioning),
+                    Toast.LENGTH_LONG
+                ).show()
                 return
             }
         }
 
-        if (isDebugBuild()) {
-            Log.d(TAG, "Starting commissioning: nodeId=$nodeId, setupCodeLength=${setupCodeOnly.length}")
-        }
-        logDebug("Starting commissioning: nodeId=$nodeId")
+        logDebug("Starting commissioning: nodeId=$nodeId, networkOnly=$useNetworkOnly")
 
+        commissioningNodeId = nodeId
         showCommissioningProgress()
 
         val deviceController = ChipClient.getDeviceController(requireContext())
@@ -237,8 +262,10 @@ class CommissioningFragment : Fragment() {
             override fun onCommissioningComplete(commissionedNodeId: Long, errorCode: Long) {
                 logDebug("onCommissioningComplete: nodeId=$commissionedNodeId, errorCode=$errorCode")
                 activity?.runOnUiThread {
+                    commissioningNodeId = null
+                    hideCommissioningProgress()
                     if (errorCode == 0L) {
-                        onCommissioningSuccess(commissionedNodeId, setupCodeText, discriminatorText?.toIntOrNull() ?: 0)
+                        onCommissioningSuccess(commissionedNodeId, setupCodeOnly, discriminatorText?.toIntOrNull()?.coerceIn(0, 15) ?: 0)
                     } else {
                         val userMessage = when (errorCode) {
                             32L, 45L -> getString(R.string.commissioning_failed_timeout)
@@ -271,6 +298,8 @@ class CommissioningFragment : Fragment() {
                 if (isDebugBuild()) Log.d(TAG, "Commissioning error", error)
                 logDebug("Error: ${error?.message}")
                 activity?.runOnUiThread {
+                    commissioningNodeId = null
+                    hideCommissioningProgress()
                     val msg = error?.message ?: "Unknown error"
                     val userMessage = if (msg.contains("Integrity check failed", ignoreCase = true)) {
                         getString(R.string.setup_code_integrity_failed)
@@ -307,12 +336,14 @@ class CommissioningFragment : Fragment() {
                 nodeId,
                 setupCodeOnly,
                 false,  // discoverOnce
-                false,  // useOnlyOnNetworkDiscovery - must be false to discover over BLE
+                useNetworkOnly,  // useOnlyOnNetworkDiscovery - true when "Commission via network only" is checked
                 params
             )
-            logDebug("pairDeviceWithCode invoked, waiting for discovery and PASE")
+            logDebug("pairDeviceWithCode invoked (networkOnly=$useNetworkOnly)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start commissioning", e)
+            commissioningNodeId = null
+            hideCommissioningProgress()
             onCommissioningFailed(e.message ?: "Failed to start commissioning")
         }
     }
@@ -326,6 +357,13 @@ class CommissioningFragment : Fragment() {
             ContextCompat.getColor(requireContext(), R.color.on_surface)
         )
         binding.btnCommission.isEnabled = false
+        binding.btnStopCommissioning.visibility = View.VISIBLE
+    }
+
+    private fun hideCommissioningProgress() {
+        binding.commissioningProgress.visibility = View.GONE
+        binding.btnCommission.isEnabled = true
+        binding.btnStopCommissioning.visibility = View.GONE
     }
 
     private fun onCommissioningSuccess(nodeId: Long, setupCode: String, discriminator: Int) {
@@ -338,24 +376,19 @@ class CommissioningFragment : Fragment() {
         )
         DeviceRepository.addDevice(requireContext(), device)
 
-        binding.commissioningProgress.visibility = View.GONE
         logDebug("Commissioning success: nodeId=$nodeId")
         binding.statusText.text = getString(R.string.commissioning_success)
         binding.statusText.setTextColor(
             ContextCompat.getColor(requireContext(), R.color.success)
         )
-        binding.btnCommission.isEnabled = true
-
         Toast.makeText(requireContext(), getString(R.string.commissioning_success), Toast.LENGTH_LONG).show()
     }
 
     private fun onCommissioningFailed(error: String) {
-        binding.commissioningProgress.visibility = View.GONE
         binding.statusText.text = getString(R.string.commissioning_failed, error)
         binding.statusText.setTextColor(
             ContextCompat.getColor(requireContext(), R.color.error)
         )
-        binding.btnCommission.isEnabled = true
     }
 
     override fun onRequestPermissionsResult(

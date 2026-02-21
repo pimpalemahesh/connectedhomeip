@@ -20,8 +20,12 @@
     <string name="commission_subtitle">Pair any Matter device (light, camera, lock, etc.) via QR code or manual code</string>
     <string name="scan_qr_code">Scan QR Code</string>
     <string name="manual_code_entry">Manual Code Entry</string>
-    <string name="setup_code_hint">QR payload (MT:…) or manual code (e.g. 20202021)</string>
-    <string name="discriminator_hint">Discriminator (optional)</string>
+    <string name="passcode_hint">Setup passcode (8 digits, e.g. 20202021)</string>
+    <string name="discriminator_hint">Discriminator (0–15, default 0)</string>
+    <string name="qr_or_manual_optional">Or paste QR payload / 11-digit code (overrides above)</string>
+    <string name="qr_or_manual_hint">MT:… or 11-digit manual code</string>
+    <string name="commission_network_only">Commission via network only (device already on network)</string>
+    <string name="stop_commissioning">Stop commissioning</string>
     <string name="node_id_hint">Node ID</string>
     <string name="commission_button">Commission</string>
     <string name="commissioning_in_progress">Commissioning in progress...</string>

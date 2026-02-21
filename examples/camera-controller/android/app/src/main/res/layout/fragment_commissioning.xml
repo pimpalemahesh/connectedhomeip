@@ -139,11 +139,12 @@
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
                     <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/input_setup_code"
+                        android:id="@+id/input_passcode"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/setup_code_hint"
+                        android:hint="@string/passcode_hint"
                         android:inputType="number"
+                        android:maxLength="8"
                         android:text="20202021" />
 
                 </com.google.android.material.textfield.TextInputLayout>
@@ -159,16 +160,57 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:hint="@string/discriminator_hint"
-                        android:inputType="number" />
+                        android:inputType="number"
+                        android:maxLength="2" />
 
                 </com.google.android.material.textfield.TextInputLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/qr_or_manual_optional"
+                    android:textSize="12sp"
+                    android:textColor="@color/on_surface_secondary" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/input_qr_or_manual"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/qr_or_manual_hint"
+                        android:inputType="text" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.checkbox.MaterialCheckBox
+                    android:id="@+id/checkbox_network_only"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/commission_network_only" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_commission"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
+                    android:layout_marginTop="12dp"
                     android:text="@string/commission_button"
+                    app:cornerRadius="12dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_stop_commissioning"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/stop_commissioning"
+                    android:visibility="gone"
                     app:cornerRadius="12dp" />
 
             </LinearLayout>

@@ -17,6 +17,8 @@
 package com.matter.camera.controller.commissioning
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -42,8 +44,8 @@ import com.matter.camera.controller.devices.DeviceRepository
 import java.util.concurrent.Executors
 
 /**
- * Fragment handling Matter camera device commissioning.
- * Supports both QR code scanning and manual code entry for pairing.
+ * Fragment handling Matter device commissioning (any device type: lights, cameras, etc.).
+ * Supports both QR code scanning (MT:... or manual pairing code) and manual code entry.
  */
 class CommissioningFragment : Fragment() {
 
@@ -56,6 +58,9 @@ class CommissioningFragment : Fragment() {
         private const val TAG = "CommissioningFragment"
         private const val CAMERA_PERMISSION_CODE = 101
     }
+
+    private fun isDebugBuild(): Boolean =
+        (requireContext().applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -159,9 +164,9 @@ class CommissioningFragment : Fragment() {
     }
 
     private fun startCommissioning() {
-        val nodeIdText = binding.inputNodeId.text?.toString()
-        val setupCodeText = binding.inputSetupCode.text?.toString()
-        val discriminatorText = binding.inputDiscriminator.text?.toString()
+        val nodeIdText = binding.inputNodeId.text?.toString()?.trim()
+        val setupCodeText = binding.inputSetupCode.text?.toString()?.trim()
+        val discriminatorText = binding.inputDiscriminator.text?.toString()?.trim()
 
         if (nodeIdText.isNullOrBlank()) {
             binding.inputNodeId.error = "Required"
@@ -178,13 +183,31 @@ class CommissioningFragment : Fragment() {
             return
         }
 
+        // Ensure Bluetooth is on for BLE commissioning (required on Android for device discovery)
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.bluetooth_required_for_commissioning),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         val discriminator = discriminatorText?.toIntOrNull()
+
+        if (isDebugBuild()) {
+            Log.d(TAG, "Starting commissioning: nodeId=$nodeId, setupCodeLength=${setupCodeText.length}, discriminator=$discriminator")
+        }
 
         showCommissioningProgress()
 
         val deviceController = ChipClient.getDeviceController(requireContext())
         deviceController.setCompletionListener(object : ChipDeviceController.CompletionListener {
             override fun onCommissioningComplete(commissionedNodeId: Long, errorCode: Long) {
+                if (isDebugBuild()) {
+                    Log.d(TAG, "onCommissioningComplete: nodeId=$commissionedNodeId, errorCode=$errorCode")
+                }
                 activity?.runOnUiThread {
                     if (errorCode == 0L) {
                         onCommissioningSuccess(commissionedNodeId, setupCodeText, discriminator ?: 0)
@@ -195,33 +218,40 @@ class CommissioningFragment : Fragment() {
             }
 
             override fun onStatusUpdate(status: Int) {
-                Log.i(TAG, "Commissioning status: $status")
+                if (isDebugBuild()) Log.d(TAG, "Commissioning status: $status")
             }
 
             override fun onPairingComplete(errorCode: Long) {
-                Log.i(TAG, "Pairing complete: errorCode=$errorCode")
+                if (isDebugBuild()) Log.d(TAG, "Pairing complete: errorCode=$errorCode")
             }
 
             override fun onPairingDeleted(errorCode: Long) {
-                Log.i(TAG, "Pairing deleted: errorCode=$errorCode")
+                if (isDebugBuild()) Log.d(TAG, "Pairing deleted: errorCode=$errorCode")
             }
 
             override fun onNotifyChipConnectionClosed() {
-                Log.i(TAG, "Connection closed")
+                if (isDebugBuild()) Log.d(TAG, "Connection closed")
             }
 
             override fun onCloseBleComplete() {}
 
             override fun onError(error: Throwable?) {
+                if (isDebugBuild()) Log.d(TAG, "Commissioning error", error)
                 activity?.runOnUiThread {
                     onCommissioningFailed(error?.message ?: "Unknown error")
                 }
             }
 
             override fun onConnectDeviceComplete() {}
-            override fun onReadCommissioningInfo(vendorId: Int, productId: Int, wifiEndpointId: Int, threadEndpointId: Int) {}
-            override fun onCommissioningStatusUpdate(nId: Long, stage: String, errorCode: Long) {}
-            override fun onCommissioningStageStart(nId: Long, stage: String) {}
+            override fun onReadCommissioningInfo(vendorId: Int, productId: Int, wifiEndpointId: Int, threadEndpointId: Int) {
+                if (isDebugBuild()) Log.d(TAG, "ReadCommissioningInfo: vendorId=$vendorId productId=$productId")
+            }
+            override fun onCommissioningStatusUpdate(nId: Long, stage: String, errorCode: Long) {
+                if (isDebugBuild()) Log.d(TAG, "CommissioningStatusUpdate: nodeId=$nId stage=$stage errorCode=$errorCode")
+            }
+            override fun onCommissioningStageStart(nId: Long, stage: String) {
+                if (isDebugBuild()) Log.d(TAG, "CommissioningStageStart: nodeId=$nId stage=$stage")
+            }
             override fun onOpCSRGenerationComplete(csr: ByteArray?) {}
             override fun onICDRegistrationInfoRequired() {}
             override fun onICDRegistrationComplete(errorCode: Long, icdNodeInfo: chip.devicecontroller.ICDDeviceInfo?) {}
@@ -233,13 +263,15 @@ class CommissioningFragment : Fragment() {
                 .setNetworkCredentials(null)
                 .setICDRegistrationInfo(null)
                 .build()
+            // discoverOnce=false: allow rediscovery if needed; useOnlyOnNetworkDiscovery=false: use BLE to find device (required for most commissioning)
             deviceController.pairDeviceWithCode(
                 nodeId,
                 setupCodeText,
-                false,
-                true,
+                false,  // discoverOnce
+                false,  // useOnlyOnNetworkDiscovery - must be false to discover over BLE
                 params
             )
+            if (isDebugBuild()) Log.d(TAG, "pairDeviceWithCode invoked, waiting for discovery and PASE")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start commissioning", e)
             onCommissioningFailed(e.message ?: "Failed to start commissioning")
@@ -260,7 +292,7 @@ class CommissioningFragment : Fragment() {
     private fun onCommissioningSuccess(nodeId: Long, setupCode: String, discriminator: Int) {
         val device = CameraDevice(
             nodeId = nodeId,
-            name = "Camera #$nodeId",
+            name = "Device #$nodeId",
             setupCode = setupCode.toLongOrNull() ?: 0L,
             discriminator = discriminator,
             isConnected = true
@@ -268,6 +300,7 @@ class CommissioningFragment : Fragment() {
         DeviceRepository.addDevice(requireContext(), device)
 
         binding.commissioningProgress.visibility = View.GONE
+        if (isDebugBuild()) Log.d(TAG, "Commissioning success: nodeId=$nodeId")
         binding.statusText.text = getString(R.string.commissioning_success)
         binding.statusText.setTextColor(
             ContextCompat.getColor(requireContext(), R.color.success)

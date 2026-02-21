@@ -7,25 +7,26 @@
     <string name="nav_settings">Settings</string>
 
     <!-- Devices Screen -->
-    <string name="no_devices">No cameras paired yet</string>
-    <string name="no_devices_subtitle">Commission a camera device to get started</string>
+    <string name="no_devices">No devices paired yet</string>
+    <string name="no_devices_subtitle">Commission a Matter device to get started</string>
     <string name="device_node_id">Node ID: %s</string>
     <string name="device_status_connected">Connected</string>
     <string name="device_status_disconnected">Disconnected</string>
     <string name="remove_device">Remove Device</string>
-    <string name="remove_device_confirm">Remove this camera from paired devices?</string>
+    <string name="remove_device_confirm">Remove this device from paired devices?</string>
 
     <!-- Commissioning Screen -->
-    <string name="commission_title">Commission Camera</string>
-    <string name="commission_subtitle">Pair a new Matter camera device</string>
+    <string name="commission_title">Commission Device</string>
+    <string name="commission_subtitle">Pair any Matter device (light, camera, lock, etc.) via QR code or manual code</string>
     <string name="scan_qr_code">Scan QR Code</string>
     <string name="manual_code_entry">Manual Code Entry</string>
-    <string name="setup_code_hint">Enter setup code (e.g. 20202021)</string>
+    <string name="setup_code_hint">QR payload (MT:…) or manual code (e.g. 20202021)</string>
     <string name="discriminator_hint">Discriminator (optional)</string>
     <string name="node_id_hint">Node ID</string>
     <string name="commission_button">Commission</string>
     <string name="commissioning_in_progress">Commissioning in progress...</string>
-    <string name="commissioning_success">Camera commissioned successfully!</string>
+    <string name="commissioning_success">Device commissioned successfully!</string>
+    <string name="bluetooth_required_for_commissioning">Turn on Bluetooth to commission devices. Matter uses BLE to discover and pair.</string>
     <string name="commissioning_failed">Commissioning failed: %s</string>
     <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
 

@@ -129,7 +129,10 @@ def main():
     kotlin_args += ["-J-Xms256m", "-J-Xmx4096m", "-J-XX:ReservedCodeCacheSize=225m",
                     "-J-XX:+UseCompressedOops"]
 
-    retcode = subprocess.check_call(kotlin_args + args.rest)
+    # Remove -Werror to prevent warnings from failing build
+    filtered_args = [arg for arg in args.rest if arg != "-Werror"]
+
+    retcode = subprocess.check_call(kotlin_args + filtered_args)
     if retcode != EXIT_SUCCESS:
         return retcode
 

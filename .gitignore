@@ -96,3 +96,7 @@ imgui.ini
 
 # Joint Fabric test harness output file
 admin_storage.json
+
+
+# android build
+android/app/build

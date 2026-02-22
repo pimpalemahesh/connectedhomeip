@@ -100,3 +100,4 @@ admin_storage.json
 
 # android build
 android/app/build
+./gradle

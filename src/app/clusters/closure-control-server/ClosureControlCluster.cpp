@@ -20,6 +20,7 @@
 #include <app/ConcreteAttributePath.h>
 #include <app/InteractionModelEngine.h>
 #include <app/clusters/closure-control-server/ClosureControlCluster.h>
+#include <app/clusters/closure-control-server/ClosureControlClusterMatterContext.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/logging/CHIPLogging.h>
 
@@ -31,100 +32,130 @@ using namespace chip::app::Clusters::ClosureControl;
 
 using chip::Protocols::InteractionModel::Status;
 
-namespace {
-
-template <typename T, typename F>
-CHIP_ERROR EncodeRead(AttributeValueEncoder & aEncoder, const F & getter)
-{
-    T ret;
-    CHIP_ERROR err = getter(ret);
-
-    VerifyOrReturnValue(err == CHIP_NO_ERROR, err);
-    return aEncoder.Encode(ret);
-}
-
-} // namespace
-
 namespace chip {
 namespace app {
 namespace Clusters {
 namespace ClosureControl {
 
-CHIP_ERROR Interface::Init()
-{
-    VerifyOrDieWithMsg(AttributeAccessInterfaceRegistry::Instance().Register(this), AppServer,
-                       "Failed to register attribute access");
-    VerifyOrDieWithMsg(CommandHandlerInterfaceRegistry::Instance().RegisterCommandHandler(this) == CHIP_NO_ERROR, AppServer,
-                       "Failed to register command handler");
+ClosureControlCluster::~ClosureControlCluster() {}
 
-    return CHIP_NO_ERROR;
+CHIP_ERROR ClosureControlCluster::Attributes(const ConcreteClusterPath & path, ReadOnlyBufferBuilder<DataModel::AttributeEntry> & builder)
+{
+    DataModel::AcceptedCommandEntry acceptedCommands[] = {
+        not HasFeature(Feature::Instantaneous), Commands::Stop::kMetadataEntry,
+        Commands::MoveTo::kMetadataEntry,
+        HasFeature(Feature::kCalibration), Commands::Calibrate::kMetadataEntry,
+    };
+    return builder.AppendElements(Span<DataModel::AcceptedCommandEntry>(acceptedCommands));
 }
 
-CHIP_ERROR Interface::Shutdown()
+CHIP_ERROR ClosureControlCluster::AcceptedCommands(const ConcreteClusterPath & path,
+    ReadOnlyBufferBuilder<DataModel::AcceptedCommandEntry> & builder)
 {
-    VerifyOrDieWithMsg(CommandHandlerInterfaceRegistry::Instance().UnregisterCommandHandler(this) == CHIP_NO_ERROR, AppServer,
-                       "Failed to unregister command handler");
-    AttributeAccessInterfaceRegistry::Instance().Unregister(this);
-
-    return CHIP_NO_ERROR;
+    static constexpr DataModel::AcceptedCommandEntry kAcceptedCommands[] = {
+        Commands::Stop::kMetadataEntry,
+        Commands::MoveTo::kMetadataEntry,
+        Commands::Calibrate::kMetadataEntry,
+    };
+    return builder.ReferenceExisting(kAcceptedCommands);
 }
 
-CHIP_ERROR Interface::Read(const ConcreteReadAttributePath & aPath, AttributeValueEncoder & aEncoder)
+CHIP_ERROR GetCountdownTime(DataModel::Nullable<ElapsedS> & countdownTime)
 {
-    switch (aPath.mAttributeId)
+    return mLogic.GetCountdownTime(countdownTime);
+}
+
+CHIP_ERROR GetMainState(MainStateEnum & mainState)
+{
+    return mLogic.GetMainState(mainState);
+}
+
+CHIP_ERROR GetOverallCurrentState(DataModel::Nullable<GenericOverallCurrentState> & overallCurrentState)
+{
+    return mLogic.GetOverallCurrentState(overallCurrentState);
+}
+
+CHIP_ERROR GetOverallTargetState(DataModel::Nullable<GenericOverallTargetState> & overallTarget)
+{
+    return mLogic.GetOverallTargetState(overallTarget);
+}
+
+CHIP_ERROR GetLatchControlModes(BitFlags<LatchControlModesBitmap> & latchControlModes)
+{
+    return mLogic.GetLatchControlModes(latchControlModes);
+}
+
+CHIP_ERROR GetCurrentErrorList(Span<ClosureErrorEnum> & outputSpan)
+{
+    return mLogic.GetCurrentErrorList(outputSpan);
+}
+
+CHIP_ERROR SetCountdownTime(const DataModel::Nullable<ElapsedS> & countdownTime)
+{
+    return mLogic.SetCountdownTime(countdownTime);
+}
+
+CHIP_ERROR SetOverallCurrentState(const DataModel::Nullable<GenericOverallCurrentState> & overallCurrentState)
+{
+    return mLogic.SetOverallCurrentState(overallCurrentState);
+}
+
+CHIP_ERROR SetOverallTargetState(const DataModel::Nullable<GenericOverallTargetState> & overallTarget)
+{
+    return mLogic.SetOverallTargetState(overallTarget);
+}
+
+CHIP_ERROR SetMainState(MainStateEnum mainState)
+{
+    return mLogic.SetMainState(mainState);
+}
+
+CHIP_ERROR SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
+{
+    return mLogic.SetLatchControlModes(latchControlModes);
+}
+
+DataModel::ActionReturnStatus ClosureControlCluster::ReadAttribute(const DataModel::ReadAttributeRequest & request, AttributeValueEncoder & encoder)
+{
+    switch (request.path.mAttributeId)
     {
-    case Attributes::CountdownTime::Id: {
-        typedef Attributes::CountdownTime::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetCountdownTime(ret); });
-    }
+    case FeatureMap::Id:
+        ReturnErrorOnFailure(encoder.Encode(mEnabledFeatures));
+        break;
 
-    case Attributes::MainState::Id: {
-        typedef Attributes::MainState::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetMainState(ret); });
-    }
-
-    case Attributes::CurrentErrorList::Id: {
-        return aEncoder.EncodeList(
-            [&logic = mClusterLogic](const auto & encoder) -> CHIP_ERROR { return logic.ReadCurrentErrorListAttribute(encoder); });
-    }
-
-    case Attributes::OverallCurrentState::Id: {
-        typedef DataModel::Nullable<GenericOverallCurrentState> T;
-        return EncodeRead<T>(aEncoder,
-                             [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetOverallCurrentState(ret); });
-    }
-
-    case Attributes::OverallTargetState::Id: {
-        typedef DataModel::Nullable<GenericOverallTargetState> T;
-        return EncodeRead<T>(aEncoder,
-                             [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetOverallTargetState(ret); });
-    }
-
-    case Attributes::LatchControlModes::Id: {
-        typedef BitFlags<LatchControlModesBitmap> T;
-        return EncodeRead<T>(aEncoder, [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetLatchControlModes(ret); });
-    }
-
-    case Attributes::FeatureMap::Id: {
-        typedef BitFlags<Feature> T;
-        return EncodeRead<T>(aEncoder, [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetFeatureMap(ret); });
-    }
-
-    case Attributes::ClusterRevision::Id: {
-        typedef Attributes::ClusterRevision::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [&logic = mClusterLogic](T & ret) -> CHIP_ERROR { return logic.GetClusterRevision(ret); });
-    }
-
+    case ClusterRevision::Id:
+        ReturnErrorOnFailure(encoder.Encode(ClosureControl::kRevision));
+        break;
+    case CountdownTime::Id:
+        ReturnErrorOnFailure(encoder.Encode(GetCountdownTime()));
+        break;
+    case MainState::Id:
+        ReturnErrorOnFailure(encoder.Encode(GetMainState()));
+        break;
+    case CurrentErrorList::Id:
+        ReturnErrorOnFailure(encoder.EncodeList(GetCurrentErrorList()));
+        break;
+    case OverallCurrentState::Id:
+        ReturnErrorOnFailure(encoder.Encode(GetOverallCurrentState()));
+        break;
+    case OverallTargetState::Id:
+        ReturnErrorOnFailure(encoder.Encode(GetOverallTargetState()));
+        break;
+    case LatchControlModes::Id:
+        ReturnErrorOnFailure(encoder.Encode(GetLatchControlModes()));
+        break;
     default:
-        return CHIP_IM_GLOBAL_STATUS(UnsupportedAttribute);
+        return Protocols::InteractionModel::Status::UnsupportedAttribute;
     }
 }
 
-void Interface::InvokeCommand(HandlerContext & handlerContext)
+std::optional<DataModel::ActionReturnStatus> ClosureControlCluster::InvokeCommand(const DataModel::InvokeRequest & request,
+    chip::TLV::TLVReader & input_arguments,
+    CommandHandler * handler)
 {
-    Status status = Status::UnsupportedCommand;
+    VerifyOrDie(request.path.mClusterId == ClosureControl::Id);
 
-    switch (handlerContext.mRequestPath.mCommandId)
+    switch (request.path.mCommandId)
     {
     case Commands::Stop::Id:
         HandleCommand<Commands::Stop::DecodableType>(
@@ -150,8 +181,7 @@ void Interface::InvokeCommand(HandlerContext & handlerContext)
         return;
 
     default:
-        handlerContext.mCommandHandler.AddStatus(handlerContext.mRequestPath, Status::UnsupportedCommand);
-        return;
+        return Protocols::InteractionModel::Status::UnsupportedCommand;
     }
 }
 
@@ -159,9 +189,3 @@ void Interface::InvokeCommand(HandlerContext & handlerContext)
 } // namespace Clusters
 } // namespace app
 } // namespace chip
-
-// -----------------------------------------------------------------------------
-// Plugin initialization
-
-void MatterClosureControlPluginServerInitCallback() {}
-void MatterClosureControlPluginServerShutdownCallback() {}

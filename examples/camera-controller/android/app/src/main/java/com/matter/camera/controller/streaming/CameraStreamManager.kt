@@ -62,8 +62,6 @@ class CameraStreamManager(private val context: Context) {
         callback: StreamCallback
     ) = withContext(Dispatchers.Main) {
         try {
-            Log.i(TAG, "Allocating video stream on node $nodeId (usage=$streamUsage)")
-
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.CameraAvStreamManagementCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
@@ -72,7 +70,18 @@ class CameraStreamManager(private val context: Context) {
             val minRes = ChipStructs.CameraAvStreamManagementClusterVideoResolutionStruct(width, height)
             val maxRes = ChipStructs.CameraAvStreamManagementClusterVideoResolutionStruct(width, height)
             val frameRate = minFrameRate ?: 30
-            val bitRate = minBitRate ?: 3000L
+
+            // Clamp bitrate to at least the value known to work with chip-tool.
+            val requestedBitRate = minBitRate ?: 10_000L
+            val bitRate = if (requestedBitRate < 10_000L) 10_000L else requestedBitRate
+            val keyFrameInterval = 4000
+
+            Log.i(
+                TAG,
+                "VideoStreamAllocate command: nodeId=$nodeId, usage=$streamUsage, " +
+                    "codec=$VIDEO_CODEC_H264, frameRate=$frameRate, width=$width, height=$height, " +
+                    "bitRate=$bitRate, keyFrameInterval=$keyFrameInterval"
+            )
 
             cluster.videoStreamAllocate(
                 object : ChipClusters.CameraAvStreamManagementCluster.VideoStreamAllocateResponseCallback {
@@ -82,7 +91,7 @@ class CameraStreamManager(private val context: Context) {
                     }
 
                     override fun onError(error: Exception) {
-                        Log.e(TAG, "VideoStreamAllocate failed", error)
+                        Log.e(TAG, "VideoStreamAllocate failed: ${error.message}", error)
                         callback.onError(error.message ?: "Unknown error")
                     }
                 },
@@ -94,9 +103,9 @@ class CameraStreamManager(private val context: Context) {
                 maxRes,
                 bitRate,
                 bitRate,
-                1,
-                Optional.empty(),
-                Optional.empty()
+                keyFrameInterval,
+                Optional.of(true),
+                Optional.of(true)
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to allocate video stream", e)
@@ -117,6 +126,8 @@ class CameraStreamManager(private val context: Context) {
 
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.CameraAvStreamManagementCluster(devicePtr, CAMERA_ENDPOINT_ID)
+
+            Log.i(TAG, "VideoStreamDeallocate command: nodeId=$nodeId, streamId=$videoStreamId")
 
             cluster.videoStreamDeallocate(
                 object : ChipClusters.DefaultClusterCallback {

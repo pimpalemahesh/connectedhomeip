@@ -56,8 +56,45 @@ class MatterWebRTCBridge(private val context: Context) {
     }
 
     /**
+     * Reduce SDP size to fit within Matter IM payload limits.
+     *
+     * We remove ICE candidate lines and several non-essential attributes,
+     * keeping the SDP valid but smaller so it can be TLV-encoded without
+     * hitting buffer limits.  ICE candidates are sent separately via
+     * ProvideICECandidates.
+     */
+    private fun sanitizeSdpForMatter(sdp: String): String {
+        val originalLength = sdp.length
+        val filteredLines = sdp
+            .lines()
+            .filter { line ->
+                // Drop ICE candidates; they are sent via ProvideICECandidates.
+                if (line.startsWith("a=candidate:")) return@filter false
+                if (line.startsWith("a=end-of-candidates")) return@filter false
+
+                // Drop verbose, optional attributes that are typically non-critical
+                // for basic WebRTC session establishment.
+                if (line.startsWith("a=extmap-allow-mixed")) return@filter false
+                if (line.startsWith("a=extmap:")) return@filter false
+                if (line.startsWith("a=ssrc:")) return@filter false
+                if (line.startsWith("a=ssrc-group:")) return@filter false
+                if (line.startsWith("a=msid:")) return@filter false
+
+                // Keep everything else.
+                true
+            }
+
+        val sanitized = filteredLines.joinToString(separator = "\r\n")
+        Log.i(TAG, "Sanitized SDP for Matter: originalLength=$originalLength, sanitizedLength=${sanitized.length}")
+        return sanitized
+    }
+
+    /**
      * Send a ProvideOffer command to the camera device via the WebRTC Transport Provider cluster.
      * The camera device will respond with an answer SDP.
+     *
+     * Uses the standard ChipClusters API with the rebuilt native library
+     * (CHIP_TLV_WRITER_BUFFER_SIZE increased to 8192 bytes).
      *
      * Mirrors C++ WebRTCManager::ProvideOffer()
      */
@@ -74,18 +111,22 @@ class MatterWebRTCBridge(private val context: Context) {
             val devicePtr = ChipClient.getConnectedDevicePointer(context, nodeId)
             val cluster = ChipClusters.WebRTCTransportProviderCluster(devicePtr, CAMERA_ENDPOINT_ID)
 
-            val videoOpt = videoStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
-            val audioOpt = audioStreamId?.let { Optional.of(it) } ?: Optional.empty<Int>()
+            val sanitizedSdp = sanitizeSdpForMatter(sdpOffer)
+            Log.d(TAG, "ProvideOffer SDP length: ${sanitizedSdp.length}")
+
+            val videoOpt: Optional<Int>? = videoStreamId?.let { Optional.of(it) }
+            val audioOpt: Optional<Int>? = audioStreamId?.let { Optional.of(it) }
 
             cluster.provideOffer(
                 object : ChipClusters.WebRTCTransportProviderCluster.ProvideOfferResponseCallback {
                     override fun onSuccess(
                         webRTCSessionID: Int?,
-                        videoStreamID: java.util.Optional<Int>?,
-                        audioStreamID: java.util.Optional<Int>?
+                        videoStreamID: Optional<Int>?,
+                        audioStreamID: Optional<Int>?
                     ) {
-                        Log.i(TAG, "ProvideOffer response: sessionId=$webRTCSessionID")
-                        callback?.onOfferSent(webRTCSessionID ?: 0)
+                        val sessionId = webRTCSessionID ?: 0
+                        Log.i(TAG, "ProvideOffer response: sessionId=$sessionId")
+                        callback?.onOfferSent(sessionId)
                     }
 
                     override fun onError(error: Exception) {
@@ -93,8 +134,8 @@ class MatterWebRTCBridge(private val context: Context) {
                         callback?.onError("ProvideOffer failed: ${error.message}")
                     }
                 },
-                null,
-                sdpOffer,
+                null, // webRTCSessionID = null (new session)
+                sanitizedSdp,
                 streamUsage,
                 REQUESTOR_ENDPOINT_ID,
                 videoOpt,

@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2025 Project CHIP Authors
+ *    Copyright (c) 2025-2026 Project CHIP Authors
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +53,6 @@ public:
     const BitFlags<Feature> & FeatureMap() const { return mFeatureMap; }
 
     OptionalAttributesSet & OptionalAttributes() { return mOptionalAttributes; }
-    const OptionalAttributesSet & OptionalAttributes() const { return mOptionalAttributes; }
 
     inline bool HasFeature(Feature aFeature) const { return mFeatureMap.Has(aFeature); }
 
@@ -162,8 +161,6 @@ public:
      */
     ClosureControlCluster(EndpointId endpointId, const Context & context);
     ~ClosureControlCluster();
-
-    const ClusterConformance & GetConformance() const { return mConformance; }
 
     CHIP_ERROR Attributes(const ConcreteClusterPath & path, ReadOnlyBufferBuilder<DataModel::AttributeEntry> & builder) override;
 

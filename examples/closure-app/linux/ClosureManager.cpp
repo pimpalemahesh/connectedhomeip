@@ -138,35 +138,35 @@ void ClosureManager::Shutdown()
 CHIP_ERROR ClosureManager::SetClosureControlInitialState(ClosureControlEndpoint & closureControlEndpoint)
 {
     ChipLogProgress(AppServer, "ClosureControlEndpoint SetInitialState");
-    ClosureControl::ClusterConformance conformance = closureControlEndpoint.GetClusterInstance().GetConformance();
+    BitFlags<ClosureControl::Feature> featureMap = closureControlEndpoint.GetClusterInstance().GetFeatureMap();
     Optional<DataModel::Nullable<CurrentPositionEnum>> currentPosition =
-        conformance.HasFeature(ClosureControl::Feature::kPositioning)
+        featureMap.Has(ClosureControl::Feature::kPositioning)
         ? MakeOptional(DataModel::MakeNullable(CurrentPositionEnum::kFullyClosed))
         : NullOptional;
-    Optional<DataModel::Nullable<bool>> currentLatch = conformance.HasFeature(ClosureControl::Feature::kMotionLatching)
+    Optional<DataModel::Nullable<bool>> currentLatch = featureMap.Has(ClosureControl::Feature::kMotionLatching)
         ? MakeOptional(DataModel::MakeNullable(true))
         : NullOptional;
     Optional<Globals::ThreeLevelAutoEnum> speed =
-        conformance.HasFeature(ClosureControl::Feature::kSpeed) ? MakeOptional(Globals::ThreeLevelAutoEnum::kAuto) : NullOptional;
+        featureMap.Has(ClosureControl::Feature::kSpeed) ? MakeOptional(Globals::ThreeLevelAutoEnum::kAuto) : NullOptional;
     DataModel::Nullable<GenericOverallCurrentState> overallState(
         GenericOverallCurrentState(currentPosition, currentLatch, speed, DataModel::MakeNullable(true)));
     ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetOverallCurrentState(overallState));
 
     Optional<DataModel::Nullable<TargetPositionEnum>> targetPosition =
-        conformance.HasFeature(ClosureControl::Feature::kPositioning) ? MakeOptional(DataModel::NullNullable) : NullOptional;
+        featureMap.Has(ClosureControl::Feature::kPositioning) ? MakeOptional(DataModel::NullNullable) : NullOptional;
     Optional<DataModel::Nullable<bool>> targetLatch =
-        conformance.HasFeature(ClosureControl::Feature::kMotionLatching) ? MakeOptional(DataModel::NullNullable) : NullOptional;
+        featureMap.Has(ClosureControl::Feature::kMotionLatching) ? MakeOptional(DataModel::NullNullable) : NullOptional;
     DataModel::Nullable<GenericOverallTargetState> overallTarget(GenericOverallTargetState(targetPosition, targetLatch, speed));
     ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetOverallTargetState(overallTarget));
 
-    if (conformance.HasFeature(ClosureControl::Feature::kPositioning) &&
-        !conformance.HasFeature(ClosureControl::Feature::kInstantaneous))
+    if (featureMap.Has(ClosureControl::Feature::kPositioning) &&
+        !featureMap.Has(ClosureControl::Feature::kInstantaneous))
     {
         ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetCountdownTimeFromDelegate(NullNullable));
     }
     ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetMainState(MainStateEnum::kStopped));
 
-    if (conformance.HasFeature(ClosureControl::Feature::kMotionLatching))
+    if (featureMap.Has(ClosureControl::Feature::kMotionLatching))
     {
         BitFlags<ClosureControl::LatchControlModesBitmap> latchControlModes;
         latchControlModes.Set(ClosureControl::LatchControlModesBitmap::kRemoteLatching)
@@ -891,7 +891,7 @@ void ClosureManager::HandleClosureMotionAction()
                    ChipLogError(AppServer, "MoveToCommand failed due to Null value Target state on Endpoint 3"));
 
     // check if closure (endpoint 1) need unlatch before starting the motion action if Latching feature is supported.
-    if (mClosureEndpoint1.GetClusterInstance().GetConformance().HasFeature(ClosureControl::Feature::kMotionLatching))
+    if (mClosureEndpoint1.GetClusterInstance().GetFeatureMap().Has(ClosureControl::Feature::kMotionLatching))
     {
         if (ep1CurrentState.Value().latch.HasValue() && !ep1CurrentState.Value().latch.Value().IsNull() &&
             ep1TargetState.Value().latch.HasValue() && !ep1TargetState.Value().latch.Value().IsNull())
@@ -964,7 +964,7 @@ void ClosureManager::HandleClosureMotionAction()
 
     // If both endpoints have reached their target positions, we can consider the closure motion action as complete.
     // Before calling HandleClosureActionComplete, we need to check if a latch action is needed.
-    if (mClosureEndpoint1.GetClusterInstance().GetConformance().HasFeature(ClosureControl::Feature::kMotionLatching))
+    if (mClosureEndpoint1.GetClusterInstance().GetFeatureMap().Has(ClosureControl::Feature::kMotionLatching))
     {
         if (ep1CurrentState.Value().latch.HasValue() && !ep1CurrentState.Value().latch.Value().IsNull() &&
             ep1TargetState.Value().latch.HasValue() && !ep1TargetState.Value().latch.Value().IsNull())

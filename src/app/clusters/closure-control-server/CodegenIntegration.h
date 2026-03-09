@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2025 Project CHIP Authors
+ *    Copyright (c) 2026 Project CHIP Authors
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +18,8 @@
 
 #pragma once
 
-#include <app-common/zap-generated/cluster-enums.h>
 #include <app/clusters/closure-control-server/ClosureControlCluster.h>
 #include <app/clusters/closure-control-server/ClosureControlClusterDelegate.h>
-#include <lib/core/DataModelTypes.h>
 
 namespace chip {
 namespace app {

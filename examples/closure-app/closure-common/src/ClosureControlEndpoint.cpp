@@ -247,7 +247,7 @@ void ClosureControlEndpoint::UpdateCurrentStateFromTargetState()
     bool isClosureInSecureState = true;
 
     // First, check if the closure is fully closed and has positioning feature.
-    if (mClusterInstance->GetConformance().FeatureMap().Has(Feature::kPositioning))
+    if (mClusterInstance->GetFeatureMap().Has(Feature::kPositioning))
     {
         isClosureInSecureState &= overallCurrentState.Value().position.HasValue() &&
             !overallCurrentState.Value().position.Value().IsNull() &&
@@ -255,7 +255,7 @@ void ClosureControlEndpoint::UpdateCurrentStateFromTargetState()
     }
 
     // Next, check if motion latching is enabled and latch is true.
-    if (mClusterInstance->GetConformance().FeatureMap().Has(Feature::kMotionLatching))
+    if (mClusterInstance->GetFeatureMap().Has(Feature::kMotionLatching))
     {
         isClosureInSecureState &= overallCurrentState.Value().latch.HasValue() &&
             !overallCurrentState.Value().latch.Value().IsNull() && overallCurrentState.Value().latch.Value().Value() == true;

@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <clusters/ClosureControl/Structs.h>
 #include <clusters/ClosureControl/Events.h>
+#include <clusters/ClosureControl/Structs.h>
 #include <lib/support/CommonIterator.h>
 
 namespace chip {

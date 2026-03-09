@@ -140,13 +140,11 @@ CHIP_ERROR ClosureManager::SetClosureControlInitialState(ClosureControlEndpoint 
 {
     ChipLogProgress(AppServer, "ClosureControlEndpoint SetInitialState");
     BitFlags<ClosureControl::Feature> featureMap = closureControlEndpoint.GetClusterInstance().GetFeatureMap();
-    Optional<DataModel::Nullable<CurrentPositionEnum>> currentPosition =
-        featureMap.Has(ClosureControl::Feature::kPositioning)
+    Optional<DataModel::Nullable<CurrentPositionEnum>> currentPosition = featureMap.Has(ClosureControl::Feature::kPositioning)
         ? MakeOptional(DataModel::MakeNullable(CurrentPositionEnum::kFullyClosed))
         : NullOptional;
-    Optional<DataModel::Nullable<bool>> currentLatch = featureMap.Has(ClosureControl::Feature::kMotionLatching)
-        ? MakeOptional(DataModel::MakeNullable(true))
-        : NullOptional;
+    Optional<DataModel::Nullable<bool>> currentLatch =
+        featureMap.Has(ClosureControl::Feature::kMotionLatching) ? MakeOptional(DataModel::MakeNullable(true)) : NullOptional;
     Optional<Globals::ThreeLevelAutoEnum> speed =
         featureMap.Has(ClosureControl::Feature::kSpeed) ? MakeOptional(Globals::ThreeLevelAutoEnum::kAuto) : NullOptional;
     DataModel::Nullable<GenericOverallCurrentState> overallState(
@@ -160,8 +158,7 @@ CHIP_ERROR ClosureManager::SetClosureControlInitialState(ClosureControlEndpoint 
     DataModel::Nullable<GenericOverallTargetState> overallTarget(GenericOverallTargetState(targetPosition, targetLatch, speed));
     ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetOverallTargetState(overallTarget));
 
-    if (featureMap.Has(ClosureControl::Feature::kPositioning) &&
-        !featureMap.Has(ClosureControl::Feature::kInstantaneous))
+    if (featureMap.Has(ClosureControl::Feature::kPositioning) && !featureMap.Has(ClosureControl::Feature::kInstantaneous))
     {
         ReturnErrorOnFailure(closureControlEndpoint.GetClusterInstance().SetCountdownTimeFromDelegate(NullNullable));
     }

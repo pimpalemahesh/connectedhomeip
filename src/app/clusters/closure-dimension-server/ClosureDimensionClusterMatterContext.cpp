@@ -16,7 +16,7 @@
  *    limitations under the License.
  */
 
-#include "closure-dimension-matter-context.h"
+#include "ClosureDimensionClusterMatterContext.h"
 #include <app-common/zap-generated/callback.h>
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app/ConcreteAttributePath.h>

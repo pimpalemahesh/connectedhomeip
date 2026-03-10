@@ -20,9 +20,9 @@
 
 #pragma once
 
-#include "closure-dimension-cluster-objects.h"
-#include "closure-dimension-delegate.h"
-#include "closure-dimension-matter-context.h"
+#include "ClosureDimensionClusterDelegate.h"
+#include "ClosureDimensionClusterMatterContext.h"
+#include "ClosureDimensionClusterObjects.h"
 #include <app/cluster-building-blocks/QuieterReporting.h>
 
 namespace chip {

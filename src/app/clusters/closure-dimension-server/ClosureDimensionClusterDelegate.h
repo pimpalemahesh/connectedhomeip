@@ -21,6 +21,7 @@
 #include <app-common/zap-generated/cluster-enums.h>
 #include <app/data-model/Nullable.h>
 #include <app/util/basic-types.h>
+#include <protocols/interaction_model/StatusCode.h>
 
 namespace chip {
 namespace app {

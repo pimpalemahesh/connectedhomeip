@@ -16,7 +16,7 @@
  *
  */
 #pragma once
-#include "closure-dimension-cluster-logic.h"
+#include "ClosureDimensionClusterLogic.h"
 
 #include <app/AttributeAccessInterfaceRegistry.h>
 #include <app/CommandHandlerInterfaceRegistry.h>

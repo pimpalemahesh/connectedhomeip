@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2025 Project CHIP Authors
+ *    Copyright (c) 2025-2026 Project CHIP Authors
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #include <app-common/zap-generated/cluster-enums.h>
 #include <app/data-model/Nullable.h>
 #include <app/util/basic-types.h>
+#include <protocols/interaction_model/StatusCode.h>
 
 namespace chip {
 namespace app {

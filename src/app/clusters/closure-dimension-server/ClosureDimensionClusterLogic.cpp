@@ -1,6 +1,6 @@
 /**
  *
- *    Copyright (c) 2023 Project CHIP Authors
+ *    Copyright (c) 2023-2026 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
  * @file Cross-platform API to handle cluster-specific logic for the closure dimension cluster on a single endpoint.
  */
 
-#include "closure-dimension-cluster-logic.h"
+#include "ClosureDimensionClusterLogic.h"
 #include <clusters/ClosureDimension/Metadata.h>
 #include <platform/LockTracker.h>
 

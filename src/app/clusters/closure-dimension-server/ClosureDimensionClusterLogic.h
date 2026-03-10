@@ -1,6 +1,6 @@
 /**
  *
- *    Copyright (c) 2025 Project CHIP Authors
+ *    Copyright (c) 2025-2026 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@
 
 #pragma once
 
-#include "closure-dimension-cluster-objects.h"
-#include "closure-dimension-delegate.h"
-#include "closure-dimension-matter-context.h"
+#include "ClosureDimensionClusterDelegate.h"
+#include "ClosureDimensionClusterMatterContext.h"
+#include "ClosureDimensionClusterObjects.h"
 #include <app/cluster-building-blocks/QuieterReporting.h>
 
 namespace chip {

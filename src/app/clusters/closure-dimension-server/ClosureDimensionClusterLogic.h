@@ -14,15 +14,12 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
-/**
- * @file Cross-platform API to handle cluster-specific logic for the valve configuration and control cluster on a single endpoint.
- */
 
 #pragma once
 
 #include "ClosureDimensionClusterDelegate.h"
 #include "ClosureDimensionClusterMatterContext.h"
-#include "ClosureDimensionClusterObjects.h"
+#include "GenericDimensionState.h"
 #include <app/cluster-building-blocks/QuieterReporting.h>
 
 namespace chip {

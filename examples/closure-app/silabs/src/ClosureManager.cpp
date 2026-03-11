@@ -348,33 +348,35 @@ void ClosureManager::HandleClosureActionCompleteEvent(AppEvent * event)
     switch (currentAction)
     {
     case Action_t::CALIBRATE_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork([](intptr_t) {
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandleClosureActionComplete(instance.GetCurrentAction());
         });
         break;
     case Action_t::MOVE_TO_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(
-            [](intptr_t) { ClosureManager::GetInstance().HandleClosureMotionAction(); });
+        LogErrorOnFailure(PlatformMgr().ScheduleWork(
+            [](intptr_t) {
+            ClosureManager::GetInstance().HandleClosureMotionAction(); });
         break;
     case Action_t::UNLATCH_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(
-            [](intptr_t) { ClosureManager::GetInstance().HandleClosureUnlatchAction(); });
+        LogErrorOnFailure(PlatformMgr().ScheduleWork(
+            [](intptr_t) {
+            ClosureManager::GetInstance().HandleClosureUnlatchAction(); });
         break;
     case Action_t::SET_TARGET_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork([](intptr_t) {
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelSetTargetAction(instance.mCurrentActionEndpointId);
         });
         break;
     case Action_t::PANEL_UNLATCH_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork([](intptr_t) {
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelUnlatchAction(instance.mCurrentActionEndpointId);
         });
         break;
     case Action_t::PANEL_STEP_ACTION:
-        TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork([](intptr_t) {
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelStepAction(instance.mCurrentActionEndpointId);
         });
@@ -716,7 +718,7 @@ void ClosureManager::HandleClosureMotionAction()
                        ChipLogError(AppServer, "Failed to get next position for Endpoint 2"));
         mClosurePanelEndpoint2CurrentState.Value().position.SetValue(
             DataModel::MakeNullable(mClosurePanelEndpoint2NextPosition.Value()));
-        TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(mClosurePanelEndpoint2CurrentState);
+        LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(mClosurePanelEndpoint2CurrentState));
         isEndPoint2ProgressPossible =
             (mClosurePanelEndpoint2NextPosition.Value() != mClosurePanelEndpoint2TargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint 2 Current Position: %d, Target Position: %d",
@@ -732,7 +734,7 @@ void ClosureManager::HandleClosureMotionAction()
                        ChipLogError(AppServer, "Failed to get next position for Endpoint 3"));
         mClosurePanelEndpoint3CurrentState.Value().position.SetValue(
             DataModel::MakeNullable(mClosurePanelEndpoint3NextPosition.Value()));
-        TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(mClosurePanelEndpoint3CurrentState);
+        LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(mClosurePanelEndpoint3CurrentState));
         isEndPoint3ProgressPossible =
             (mClosurePanelEndpoint3NextPosition.Value() != mClosurePanelEndpoint3TargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint 3 Current Position: %d, Target Position: %d",
@@ -799,11 +801,11 @@ void ClosureManager::HandleClosureMotionAction()
                 LogErrorOnFailure(
                     instance.mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(mClosureEndpoint1CurrentState));
                 mClosurePanelEndpoint2CurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-                TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(
-                    mClosurePanelEndpoint2CurrentState);
+                LogErrorOnFailure(
+                    instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(mClosurePanelEndpoint2CurrentState));
                 mClosurePanelEndpoint3CurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-                TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(
-                    mClosurePanelEndpoint3CurrentState);
+                LogErrorOnFailure(
+                    instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(mClosurePanelEndpoint3CurrentState));
                 ChipLogProgress(AppServer, "latched action complete");
             }
         }
@@ -930,7 +932,7 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
         VerifyOrReturn(!nextPosition.IsNull(), ChipLogError(AppServer, "Next position is not set for Endpoint %d", endpointId));
 
         panelCurrentState.Value().position.SetValue(DataModel::MakeNullable(nextPosition.Value()));
-        TEMPORARY_RETURN_IGNORED panelEp->GetInterface().SetCurrentState(panelCurrentState);
+        LogErrorOnFailure(panelEp->GetInterface().SetCurrentState(panelCurrentState));
 
         panelProgressPossible = (nextPosition.Value() != panelTargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint %d Current Position: %d, Target Position: %d", endpointId, nextPosition.Value(),
@@ -969,7 +971,7 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
             LogErrorOnFailure(mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(mClosureEndpoint1OverallCurrentState));
 
             panelCurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-            TEMPORARY_RETURN_IGNORED panelEp->GetInterface().SetCurrentState(panelCurrentState);
+            LogErrorOnFailure(panelEp->GetInterface().SetCurrentState(panelCurrentState));
 
             ChipLogProgress(AppServer, "Latch action completed");
         }
@@ -1028,11 +1030,9 @@ void ClosureManager::HandleClosureUnlatchAction()
             LogErrorOnFailure(
                 instance.mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(mClosureEndpoint1CurrentState));
             mClosurePanelEndpoint2CurrentState.Value().latch.SetValue(DataModel::MakeNullable(false));
-            TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(
-                mClosurePanelEndpoint2CurrentState);
+            LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(mClosurePanelEndpoint2CurrentState));
             mClosurePanelEndpoint3CurrentState.Value().latch.SetValue(DataModel::MakeNullable(false));
-            TEMPORARY_RETURN_IGNORED instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(
-                mClosurePanelEndpoint3CurrentState);
+            LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(mClosurePanelEndpoint3CurrentState));
             ChipLogProgress(AppServer, "Unlatched action completed");
         }
     }
@@ -1081,7 +1081,7 @@ void ClosureManager::HandlePanelUnlatchAction(EndpointId endpointId)
         LogErrorOnFailure(mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(mClosureEndpoint1OverallCurrentState));
 
         panelCurrentState.Value().latch.SetValue(false);
-        TEMPORARY_RETURN_IGNORED panelEp->GetInterface().SetCurrentState(panelCurrentState);
+        LogErrorOnFailure(panelEp->GetInterface().SetCurrentState(panelCurrentState));
 
         ChipLogProgress(AppServer, "Unlatched action completed");
     }
@@ -1206,7 +1206,7 @@ void ClosureManager::HandlePanelStepAction(EndpointId endpointId)
         }
 
         panelCurrentState.Value().position.SetValue(DataModel::MakeNullable(nextCurrentPosition));
-        TEMPORARY_RETURN_IGNORED panelEp->GetInterface().SetCurrentState(panelCurrentState);
+        LogErrorOnFailure(panelEp->GetInterface().SetCurrentState(panelCurrentState));
 
         instance.CancelTimer(); // Cancel any existing timer before starting a new action
 

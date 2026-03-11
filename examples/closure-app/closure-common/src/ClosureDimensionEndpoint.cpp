@@ -92,8 +92,8 @@ void ClosureDimensionEndpoint::OnCalibrateActionComplete()
         GenericDimensionStateStruct(MakeOptional(DataModel::MakeNullable(kFullClosedTargetPosition)),
                                     MakeOptional(DataModel::MakeNullable(true)), MakeOptional(Globals::ThreeLevelAutoEnum::kAuto)));
     DataModel::Nullable<GenericDimensionStateStruct> targetState{ DataModel::NullNullable };
-    TEMPORARY_RETURN_IGNORED mInterface.SetCurrentState(currentState);
-    TEMPORARY_RETURN_IGNORED mInterface.SetTargetState(targetState);
+    LogErrorOnFailure(mInterface.SetCurrentState(currentState));
+    LogErrorOnFailure(mInterface.SetTargetState(targetState));
 }
 
 void ClosureDimensionEndpoint::OnMoveToActionComplete()
@@ -131,7 +131,7 @@ void ClosureDimensionEndpoint::UpdateCurrentStateFromTargetState()
         currentState.Value().speed.SetValue(targetState.Value().speed.Value());
     }
 
-    TEMPORARY_RETURN_IGNORED mInterface.SetCurrentState(currentState);
+    LogErrorOnFailure(mInterface.SetCurrentState(currentState));
 }
 
 void ClosureDimensionEndpoint::OnPanelMotionActionComplete()

@@ -110,11 +110,11 @@ public:
     ClosureDimensionDelegate & GetDelegate() { return mDelegate; }
 
     /**
-     * @brief Retrieves the interface associated with this Closure Dimension endpoint.
+     * @brief Retrieves the cluster instance associated with this Closure Dimension endpoint.
      *
      * @return Reference to the Interface instance.
      */
-    Interface & GetInterface() { return mInterface; }
+    Interface & GetClusterInstance() { return mInterface; }
 
     /**
      * @brief Handles the completion of a stop motion action.

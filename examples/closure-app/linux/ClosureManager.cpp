@@ -177,7 +177,7 @@ CHIP_ERROR ClosureManager::SetClosureControlInitialState(ClosureControlEndpoint 
 CHIP_ERROR ClosureManager::SetClosurePanelInitialState(ClosureDimensionEndpoint & closurePanelEndpoint)
 {
     ChipLogProgress(AppServer, "ClosurePanelEndpoint SetInitialState");
-    ClosureDimension::ClusterConformance conformance = closurePanelEndpoint.GetInterface().GetConformance();
+    ClosureDimension::ClusterConformance conformance = closurePanelEndpoint.GetClusterInstance().GetConformance();
 
     Optional<DataModel::Nullable<Percent100ths>> currentPosition = conformance.HasFeature(ClosureDimension::Feature::kPositioning)
         ? MakeOptional(DataModel::MakeNullable<Percent100ths>(10000))
@@ -189,42 +189,43 @@ CHIP_ERROR ClosureManager::SetClosurePanelInitialState(ClosureDimensionEndpoint 
         conformance.HasFeature(ClosureDimension::Feature::kSpeed) ? MakeOptional(Globals::ThreeLevelAutoEnum::kAuto) : NullOptional;
     DataModel::Nullable<GenericDimensionStateStruct> currentState(
         GenericDimensionStateStruct(currentPosition, currentLatch, speed));
-    ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetCurrentState(currentState));
+    ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetCurrentState(currentState));
 
     Optional<DataModel::Nullable<Percent100ths>> targetPosition =
         conformance.HasFeature(ClosureDimension::Feature::kPositioning) ? MakeOptional(DataModel::NullNullable) : NullOptional;
     Optional<DataModel::Nullable<bool>> targetLatch =
         conformance.HasFeature(ClosureDimension::Feature::kMotionLatching) ? MakeOptional(DataModel::NullNullable) : NullOptional;
     DataModel::Nullable<GenericDimensionStateStruct> targetState(GenericDimensionStateStruct(targetPosition, targetLatch, speed));
-    ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetTargetState(targetState));
+    ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetTargetState(targetState));
 
     if (conformance.HasFeature(ClosureDimension::Feature::kPositioning))
     {
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetResolution(Percent100ths(100)));
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetStepValue(1000));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetResolution(Percent100ths(100)));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetStepValue(1000));
     }
     if (conformance.HasFeature(ClosureDimension::Feature::kUnit))
     {
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetUnit(ClosureUnitEnum::kMillimeter));
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetUnitRange(ClosureDimension::Structs::UnitRangeStruct::Type{
-            .min = static_cast<int16_t>(0), .max = static_cast<int16_t>(10000) }));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetUnit(ClosureUnitEnum::kMillimeter));
+        ReturnErrorOnFailure(
+            closurePanelEndpoint.GetClusterInstance().SetUnitRange(ClosureDimension::Structs::UnitRangeStruct::Type{
+                .min = static_cast<int16_t>(0), .max = static_cast<int16_t>(10000) }));
     }
     if (conformance.HasFeature(ClosureDimension::Feature::kRotation))
     {
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetOverflow(OverflowEnum::kTopInside));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetOverflow(OverflowEnum::kTopInside));
     }
     if (conformance.HasFeature(ClosureDimension::Feature::kLimitation))
     {
         ClosureDimension::Structs::RangePercent100thsStruct::Type limitRange{ .min = static_cast<Percent100ths>(0),
                                                                               .max = static_cast<Percent100ths>(10000) };
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetLimitRange(limitRange));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetLimitRange(limitRange));
     }
     if (conformance.HasFeature(ClosureDimension::Feature::kMotionLatching))
     {
         BitFlags<ClosureDimension::LatchControlModesBitmap> latchControlModes;
         latchControlModes.Set(ClosureDimension::LatchControlModesBitmap::kRemoteLatching)
             .Set(ClosureDimension::LatchControlModesBitmap::kRemoteUnlatching);
-        ReturnErrorOnFailure(closurePanelEndpoint.GetInterface().SetLatchControlModes(latchControlModes));
+        ReturnErrorOnFailure(closurePanelEndpoint.GetClusterInstance().SetLatchControlModes(latchControlModes));
     }
 
     return CHIP_NO_ERROR;
@@ -279,18 +280,18 @@ ClosureManager::OnMoveToCommand(const Optional<TargetPositionEnum> & position, c
     //  till we reach the target position.
 
     DataModel::Nullable<GenericDimensionStateStruct> ep2CurrentState;
-    VerifyOrReturnError(mClosurePanelEndpoint2.GetInterface().GetCurrentState(ep2CurrentState) == CHIP_NO_ERROR, Status::Failure,
-                        ChipLogError(AppServer, "Failed to get current state for Endpoint 2"));
+    VerifyOrReturnError(mClosurePanelEndpoint2.GetClusterInstance().GetCurrentState(ep2CurrentState) == CHIP_NO_ERROR,
+                        Status::Failure, ChipLogError(AppServer, "Failed to get current state for Endpoint 2"));
     DataModel::Nullable<GenericDimensionStateStruct> ep3CurrentState;
-    VerifyOrReturnError(mClosurePanelEndpoint3.GetInterface().GetCurrentState(ep3CurrentState) == CHIP_NO_ERROR, Status::Failure,
-                        ChipLogError(AppServer, "Failed to get current state for Endpoint 3"));
+    VerifyOrReturnError(mClosurePanelEndpoint3.GetClusterInstance().GetCurrentState(ep3CurrentState) == CHIP_NO_ERROR,
+                        Status::Failure, ChipLogError(AppServer, "Failed to get current state for Endpoint 3"));
 
     DataModel::Nullable<GenericDimensionStateStruct> ep2TargetState;
-    VerifyOrReturnError(mClosurePanelEndpoint2.GetInterface().GetTargetState(ep2TargetState) == CHIP_NO_ERROR, Status::Failure,
-                        ChipLogError(AppServer, "Failed to get target state for Endpoint 2"));
+    VerifyOrReturnError(mClosurePanelEndpoint2.GetClusterInstance().GetTargetState(ep2TargetState) == CHIP_NO_ERROR,
+                        Status::Failure, ChipLogError(AppServer, "Failed to get target state for Endpoint 2"));
     DataModel::Nullable<GenericDimensionStateStruct> ep3TargetState;
-    VerifyOrReturnError(mClosurePanelEndpoint3.GetInterface().GetTargetState(ep3TargetState) == CHIP_NO_ERROR, Status::Failure,
-                        ChipLogError(AppServer, "Failed to get target state for Endpoint 3"));
+    VerifyOrReturnError(mClosurePanelEndpoint3.GetClusterInstance().GetTargetState(ep3TargetState) == CHIP_NO_ERROR,
+                        Status::Failure, ChipLogError(AppServer, "Failed to get target state for Endpoint 3"));
 
     VerifyOrReturnError(!ep2CurrentState.IsNull(), Status::Failure,
                         ChipLogError(AppServer, "MoveToCommand failed due to Null value Current state on Endpoint 2"));
@@ -300,8 +301,8 @@ ClosureManager::OnMoveToCommand(const Optional<TargetPositionEnum> & position, c
     // Create target struct for the panels if the target state is not set.
     GenericDimensionStateStruct ep2Target = ep2TargetState.IsNull() ? GenericDimensionStateStruct() : ep2TargetState.Value();
     GenericDimensionStateStruct ep3Target = ep3TargetState.IsNull() ? GenericDimensionStateStruct() : ep3TargetState.Value();
-    ClosureDimension::ClusterConformance ep2Conformance = mClosurePanelEndpoint2.GetInterface().GetConformance();
-    ClosureDimension::ClusterConformance ep3Conformance = mClosurePanelEndpoint3.GetInterface().GetConformance();
+    ClosureDimension::ClusterConformance ep2Conformance = mClosurePanelEndpoint2.GetClusterInstance().GetConformance();
+    ClosureDimension::ClusterConformance ep3Conformance = mClosurePanelEndpoint3.GetClusterInstance().GetConformance();
     if (position.HasValue())
     {
         // Set the Closure panel target position for the panels based on the MoveTo Command position.
@@ -370,9 +371,11 @@ ClosureManager::OnMoveToCommand(const Optional<TargetPositionEnum> & position, c
         }
     }
 
-    VerifyOrReturnError(mClosurePanelEndpoint2.GetInterface().SetTargetState(DataModel::MakeNullable(ep2Target)) == CHIP_NO_ERROR,
+    VerifyOrReturnError(mClosurePanelEndpoint2.GetClusterInstance().SetTargetState(DataModel::MakeNullable(ep2Target)) ==
+                            CHIP_NO_ERROR,
                         Status::Failure, ChipLogError(AppServer, "Failed to set target for Endpoint 2"));
-    VerifyOrReturnError(mClosurePanelEndpoint3.GetInterface().SetTargetState(DataModel::MakeNullable(ep3Target)) == CHIP_NO_ERROR,
+    VerifyOrReturnError(mClosurePanelEndpoint3.GetClusterInstance().SetTargetState(DataModel::MakeNullable(ep3Target)) ==
+                            CHIP_NO_ERROR,
                         Status::Failure, ChipLogError(AppServer, "Failed to set target for Endpoint 3"));
     VerifyOrReturnError(mClosureEndpoint1.GetClusterInstance().SetCountdownTimeFromDelegate(kCountdownTimeSeconds) == CHIP_NO_ERROR,
                         Status::Failure, ChipLogError(AppServer, "Failed to set countdown time for move to command on Endpoint 1"));
@@ -410,7 +413,7 @@ chip::Protocols::InteractionModel::Status ClosureManager::OnSetTargetCommand(con
 
     ClosureDimensionEndpoint mClosurePanelEndpoint =
         endpointId == kClosurePanelEndpoint2 ? mClosurePanelEndpoint2 : mClosurePanelEndpoint3;
-    ClosureDimension::ClusterConformance mClosurePanelConformance = mClosurePanelEndpoint.GetInterface().GetConformance();
+    ClosureDimension::ClusterConformance mClosurePanelConformance = mClosurePanelEndpoint.GetClusterInstance().GetConformance();
 
     if (position.HasValue() && mClosurePanelConformance.HasFeature(ClosureDimension::Feature::kPositioning))
     {
@@ -626,11 +629,11 @@ void ClosureManager::HandlePanelUnlatchAction(EndpointId endpointId)
     DataModel::Nullable<GenericDimensionStateStruct> panelCurrentState = DataModel::NullNullable;
     DataModel::Nullable<GenericDimensionStateStruct> panelTargetState  = DataModel::NullNullable;
 
-    VerifyOrReturn(panelEp->GetInterface().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
+    VerifyOrReturn(panelEp->GetClusterInstance().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get current state for Endpoint %d", endpointId));
     VerifyOrReturn(!panelCurrentState.IsNull(), ChipLogError(AppServer, "Current state is not set for Endpoint %d", endpointId));
 
-    VerifyOrReturn(panelEp->GetInterface().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
+    VerifyOrReturn(panelEp->GetClusterInstance().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get target for Endpoint %d", endpointId));
     VerifyOrReturn(!panelTargetState.IsNull(), ChipLogError(AppServer, "Target is not set for Endpoint %d", endpointId));
 
@@ -652,7 +655,7 @@ void ClosureManager::HandlePanelUnlatchAction(EndpointId endpointId)
         LogErrorOnFailure(mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(ep1OverallCurrentState));
 
         panelCurrentState.Value().latch.SetValue(false);
-        LogErrorOnFailure(panelEp->GetInterface().SetCurrentState(panelCurrentState));
+        LogErrorOnFailure(panelEp->GetClusterInstance().SetCurrentState(panelCurrentState));
 
         ChipLogProgress(AppServer, "Unlatched action completed");
     }
@@ -685,11 +688,11 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
     DataModel::Nullable<GenericDimensionStateStruct> panelCurrentState = DataModel::NullNullable;
     DataModel::Nullable<GenericDimensionStateStruct> panelTargetState  = DataModel::NullNullable;
 
-    VerifyOrReturn(ep->GetInterface().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
+    VerifyOrReturn(ep->GetClusterInstance().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get current state for Endpoint %d", endpointId));
     VerifyOrReturn(!panelCurrentState.IsNull(), ChipLogError(AppServer, "Current state is not set for Endpoint %d", endpointId));
 
-    VerifyOrReturn(ep->GetInterface().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
+    VerifyOrReturn(ep->GetClusterInstance().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get target for Endpoint %d", endpointId));
     VerifyOrReturn(!panelTargetState.IsNull(), ChipLogError(AppServer, "Target is not set for Endpoint %d", endpointId));
 
@@ -702,7 +705,7 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
         VerifyOrReturn(!nextPosition.IsNull(), ChipLogError(AppServer, "Next position is not set for Endpoint %d", endpointId));
 
         panelCurrentState.Value().position.SetValue(DataModel::MakeNullable(nextPosition.Value()));
-        LogErrorOnFailure(ep->GetInterface().SetCurrentState(panelCurrentState));
+        LogErrorOnFailure(ep->GetClusterInstance().SetCurrentState(panelCurrentState));
 
         panelProgressPossible = (nextPosition.Value() != panelTargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint %d Current Position: %d, Target Position: %d", endpointId, nextPosition.Value(),
@@ -736,7 +739,7 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
     }
 
     // If currently unlatched (false) and target is latched (true), latch after completing motion if Latching feature is supported.
-    if (ep->GetInterface().GetConformance().HasFeature(ClosureDimension::Feature::kMotionLatching))
+    if (ep->GetClusterInstance().GetConformance().HasFeature(ClosureDimension::Feature::kMotionLatching))
     {
         if (panelCurrentState.Value().latch.HasValue() && !panelCurrentState.Value().latch.Value().IsNull() &&
             panelTargetState.Value().latch.HasValue() && !panelTargetState.Value().latch.Value().IsNull())
@@ -756,7 +759,7 @@ void ClosureManager::HandlePanelSetTargetAction(EndpointId endpointId)
                 LogErrorOnFailure(mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(ep1OverallCurrentState));
 
                 panelCurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-                LogErrorOnFailure(ep->GetInterface().SetCurrentState(panelCurrentState));
+                LogErrorOnFailure(ep->GetClusterInstance().SetCurrentState(panelCurrentState));
 
                 ChipLogProgress(AppServer, "Latch action completed");
             }
@@ -779,9 +782,9 @@ void ClosureManager::HandlePanelStepAction(EndpointId endpointId)
     DataModel::Nullable<GenericDimensionStateStruct> panelCurrentState;
     DataModel::Nullable<GenericDimensionStateStruct> panelTargetState;
 
-    VerifyOrReturn(ep->GetInterface().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
+    VerifyOrReturn(ep->GetClusterInstance().GetCurrentState(panelCurrentState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get current state for Step action"));
-    VerifyOrReturn(ep->GetInterface().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
+    VerifyOrReturn(ep->GetClusterInstance().GetTargetState(panelTargetState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get target state for Step action"));
 
     VerifyOrReturn(!panelCurrentState.IsNull(), ChipLogError(AppServer, "Current state is null, Step action Failed"));
@@ -803,7 +806,7 @@ void ClosureManager::HandlePanelStepAction(EndpointId endpointId)
     {
         chip::Percent100ths nextCurrentPosition;
         chip::Percent100ths stepValue;
-        VerifyOrReturn(ep->GetInterface().GetStepValue(stepValue) == CHIP_NO_ERROR,
+        VerifyOrReturn(ep->GetClusterInstance().GetStepValue(stepValue) == CHIP_NO_ERROR,
                        ChipLogError(AppServer, "Failed to get step value for Step action"));
 
         // Compute the next position
@@ -821,7 +824,7 @@ void ClosureManager::HandlePanelStepAction(EndpointId endpointId)
         }
 
         panelCurrentState.Value().position.SetValue(DataModel::MakeNullable(nextCurrentPosition));
-        LogErrorOnFailure(ep->GetInterface().SetCurrentState(panelCurrentState));
+        LogErrorOnFailure(ep->GetClusterInstance().SetCurrentState(panelCurrentState));
 
         // Cancel any existing timer before starting a new action
         if (endpointId == kClosurePanelEndpoint2)
@@ -864,13 +867,13 @@ void ClosureManager::HandleClosureMotionAction()
     DataModel::Nullable<GenericDimensionStateStruct> ep2TargetState;
     DataModel::Nullable<GenericDimensionStateStruct> ep3TargetState;
 
-    VerifyOrReturn(mClosurePanelEndpoint2.GetInterface().GetCurrentState(ep2CurrentState) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClosurePanelEndpoint2.GetClusterInstance().GetCurrentState(ep2CurrentState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get current state for Endpoint 2"));
-    VerifyOrReturn(mClosurePanelEndpoint3.GetInterface().GetCurrentState(ep3CurrentState) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClosurePanelEndpoint3.GetClusterInstance().GetCurrentState(ep3CurrentState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get current state for Endpoint 3"));
-    VerifyOrReturn(mClosurePanelEndpoint2.GetInterface().GetTargetState(ep2TargetState) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClosurePanelEndpoint2.GetClusterInstance().GetTargetState(ep2TargetState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get target state for Endpoint 2"));
-    VerifyOrReturn(mClosurePanelEndpoint3.GetInterface().GetTargetState(ep3TargetState) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClosurePanelEndpoint3.GetClusterInstance().GetTargetState(ep3TargetState) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to get target state for Endpoint 3"));
 
     VerifyOrReturn(!ep1CurrentState.IsNull(),
@@ -902,9 +905,9 @@ void ClosureManager::HandleClosureMotionAction()
                 ep1CurrentState.Value().secureState.SetNonNull(false);
                 LogErrorOnFailure(instance.mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(ep1CurrentState));
                 ep2CurrentState.Value().latch.SetValue(DataModel::MakeNullable(false));
-                LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(ep2CurrentState));
+                LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetClusterInstance().SetCurrentState(ep2CurrentState));
                 ep3CurrentState.Value().latch.SetValue(DataModel::MakeNullable(false));
-                LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(ep3CurrentState));
+                LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetClusterInstance().SetCurrentState(ep3CurrentState));
                 ChipLogProgress(AppServer, "Unlatched action completed");
             }
         }
@@ -922,7 +925,7 @@ void ClosureManager::HandleClosureMotionAction()
     {
         VerifyOrReturn(!ep2NextPosition.IsNull(), ChipLogError(AppServer, "Failed to get next position for Endpoint 2"));
         ep2CurrentState.Value().position.SetValue(DataModel::MakeNullable(ep2NextPosition.Value()));
-        LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(ep2CurrentState));
+        LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetClusterInstance().SetCurrentState(ep2CurrentState));
         isEndPoint2ProgressPossible = (ep2NextPosition.Value() != ep2TargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint 2 Current Position: %d, Target Position: %d", ep2NextPosition.Value(),
                         ep2TargetState.Value().position.Value().Value());
@@ -933,7 +936,7 @@ void ClosureManager::HandleClosureMotionAction()
     {
         VerifyOrReturn(!ep3NextPosition.IsNull(), ChipLogError(AppServer, "Failed to get next position for Endpoint 3"));
         ep3CurrentState.Value().position.SetValue(DataModel::MakeNullable(ep3NextPosition.Value()));
-        LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(ep3CurrentState));
+        LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetClusterInstance().SetCurrentState(ep3CurrentState));
         isEndPoint3ProgressPossible = (ep3NextPosition.Value() != ep3TargetState.Value().position.Value().Value());
         ChipLogProgress(AppServer, "EndPoint 3 Current Position: %d, Target Position: %d", ep3NextPosition.Value(),
                         ep3TargetState.Value().position.Value().Value());
@@ -985,9 +988,9 @@ void ClosureManager::HandleClosureMotionAction()
                 }
                 LogErrorOnFailure(instance.mClosureEndpoint1.GetClusterInstance().SetOverallCurrentState(ep1CurrentState));
                 ep2CurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-                LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetInterface().SetCurrentState(ep2CurrentState));
+                LogErrorOnFailure(instance.mClosurePanelEndpoint2.GetClusterInstance().SetCurrentState(ep2CurrentState));
                 ep3CurrentState.Value().latch.SetValue(DataModel::MakeNullable(true));
-                LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetInterface().SetCurrentState(ep3CurrentState));
+                LogErrorOnFailure(instance.mClosurePanelEndpoint3.GetClusterInstance().SetCurrentState(ep3CurrentState));
                 ChipLogProgress(AppServer, "latched action complete");
             }
         }

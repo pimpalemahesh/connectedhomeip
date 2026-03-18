@@ -22,7 +22,7 @@
 #include <pw_unit_test/framework.h>
 
 #include <app-common/zap-generated/cluster-objects.h>
-#include <app/clusters/closure-dimension-server/closure-dimension-cluster-logic.h>
+#include <app/clusters/closure-dimension-server/closure-dimension-server.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-cluster-objects.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-delegate.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-matter-context.h>
@@ -85,10 +85,11 @@ public:
 
     void SetUp() override
     {
+        testEndpointId = 1;
         mockDelegate = TestDelegate();
         mockContext  = MockMatterContext();
         conformance  = ClusterConformance();
-        logic        = std::make_unique<ClusterLogic>(mockDelegate, mockContext);
+        logic        = std::make_unique<Interface>(testEndpointId, mockDelegate, mockContext);
 
         // Add values to attributes need to be set in Init()
         initParams.modulationType       = ModulationTypeEnum::kOpacity;
@@ -98,11 +99,12 @@ public:
 
     void TearDown() override { logic.reset(); }
 
+    EndpointId testEndpointId;
     TestDelegate mockDelegate;
     MockMatterContext mockContext;
     ClusterConformance conformance;
     ClusterInitParameters initParams;
-    std::unique_ptr<ClusterLogic> logic;
+    std::unique_ptr<Interface> logic;
 };
 
 bool HasAttributeChanges(std::vector<AttributeId> changes, AttributeId id)

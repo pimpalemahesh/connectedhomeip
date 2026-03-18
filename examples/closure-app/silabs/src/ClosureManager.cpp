@@ -355,14 +355,10 @@ void ClosureManager::HandleClosureActionCompleteEvent(AppEvent * event)
         }));
         break;
     case Action_t::MOVE_TO_ACTION:
-        LogErrorOnFailure(PlatformMgr().ScheduleWork(
-            [](intptr_t) {
-            ClosureManager::GetInstance().HandleClosureMotionAction(); }));
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) { ClosureManager::GetInstance().HandleClosureMotionAction(); }));
         break;
     case Action_t::UNLATCH_ACTION:
-        LogErrorOnFailure(PlatformMgr().ScheduleWork(
-            [](intptr_t) {
-            ClosureManager::GetInstance().HandleClosureUnlatchAction(); }));
+        LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) { ClosureManager::GetInstance().HandleClosureUnlatchAction(); }));
         break;
     case Action_t::SET_TARGET_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {

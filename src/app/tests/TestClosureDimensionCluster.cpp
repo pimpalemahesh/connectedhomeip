@@ -22,10 +22,10 @@
 #include <pw_unit_test/framework.h>
 
 #include <app-common/zap-generated/cluster-objects.h>
-#include <app/clusters/closure-dimension-server/closure-dimension-server.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-cluster-objects.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-delegate.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-matter-context.h>
+#include <app/clusters/closure-dimension-server/closure-dimension-server.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/UnitTestUtils.h>
 #include <platform/CHIPDeviceLayer.h>
@@ -86,10 +86,10 @@ public:
     void SetUp() override
     {
         testEndpointId = 1;
-        mockDelegate = TestDelegate();
-        mockContext  = MockMatterContext();
-        conformance  = ClusterConformance();
-        logic        = std::make_unique<Interface>(testEndpointId, mockDelegate, mockContext);
+        mockDelegate   = TestDelegate();
+        mockContext    = MockMatterContext();
+        conformance    = ClusterConformance();
+        logic          = std::make_unique<Interface>(testEndpointId, mockDelegate, mockContext);
 
         // Add values to attributes need to be set in Init()
         initParams.modulationType       = ModulationTypeEnum::kOpacity;

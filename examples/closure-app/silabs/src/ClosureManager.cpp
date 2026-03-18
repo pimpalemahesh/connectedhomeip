@@ -352,35 +352,35 @@ void ClosureManager::HandleClosureActionCompleteEvent(AppEvent * event)
         LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandleClosureActionComplete(instance.GetCurrentAction());
-        });
+        }));
         break;
     case Action_t::MOVE_TO_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork(
             [](intptr_t) {
-            ClosureManager::GetInstance().HandleClosureMotionAction(); });
+            ClosureManager::GetInstance().HandleClosureMotionAction(); }));
         break;
     case Action_t::UNLATCH_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork(
             [](intptr_t) {
-            ClosureManager::GetInstance().HandleClosureUnlatchAction(); });
+            ClosureManager::GetInstance().HandleClosureUnlatchAction(); }));
         break;
     case Action_t::SET_TARGET_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelSetTargetAction(instance.mCurrentActionEndpointId);
-        });
+        }));
         break;
     case Action_t::PANEL_UNLATCH_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelUnlatchAction(instance.mCurrentActionEndpointId);
-        });
+        }));
         break;
     case Action_t::PANEL_STEP_ACTION:
         LogErrorOnFailure(PlatformMgr().ScheduleWork([](intptr_t) {
             ClosureManager & instance = ClosureManager::GetInstance();
             instance.HandlePanelStepAction(instance.mCurrentActionEndpointId);
-        });
+        }));
         break;
     default:
         break;

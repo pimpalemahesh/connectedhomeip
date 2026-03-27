@@ -35,7 +35,7 @@ namespace ClosureDimension {
 class ClosureDimensionClusterDelegate
 {
 public:
-    ClosureDimensionClusterDelegate() {};
+    ClosureDimensionClusterDelegate(){};
     virtual ~ClosureDimensionClusterDelegate() = default;
 
     /**

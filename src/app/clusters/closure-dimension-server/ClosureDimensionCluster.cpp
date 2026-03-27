@@ -17,8 +17,17 @@
  */
 
 #include "ClosureDimensionCluster.h"
+#include <app/server-cluster/AttributeListBuilder.h>
+#include <clusters/ClosureDimension/Attributes.h>
+#include <clusters/ClosureDimension/Commands.h>
 #include <clusters/ClosureDimension/Metadata.h>
-#include <platform/LockTracker.h>
+#include <lib/support/logging/CHIPLogging.h>
+
+using namespace chip;
+using namespace chip::app;
+using namespace chip::app::Clusters;
+using namespace chip::app::Clusters::ClosureDimension;
+using namespace chip::app::Clusters::ClosureDimension::Attributes;
 
 namespace chip {
 namespace app {
@@ -29,151 +38,154 @@ using namespace Protocols::InteractionModel;
 
 namespace {
 
-template <typename T, typename F>
-CHIP_ERROR EncodeRead(AttributeValueEncoder & aEncoder, const F & getter)
-{
-    T ret;
-    CHIP_ERROR err = getter(ret);
-    VerifyOrReturnValue(err == CHIP_NO_ERROR, err);
-    return aEncoder.Encode(ret);
-}
-
 constexpr Percent100ths kPercents100thsMaxValue    = 10000;
 constexpr uint64_t kPositionQuietReportingInterval = 5000;
 
 } // namespace
 
-CHIP_ERROR Interface::Read(const ConcreteReadAttributePath & aPath, AttributeValueEncoder & aEncoder)
+ClosureDimensionCluster::ClosureDimensionCluster(EndpointId endpointId, const Context & context) :
+    DefaultServerCluster({ endpointId, ClosureDimension::Id }), mDelegate(context.delegate), mTimerDelegate(context.timerDelegate),
+    mConformance(context.conformance)
 {
-    switch (aPath.mAttributeId)
-    {
-    case Attributes::CurrentState::Id: {
-        typedef DataModel::Nullable<GenericDimensionStateStruct> T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetCurrentState(ret); });
-    }
-    case Attributes::TargetState::Id: {
-        typedef DataModel::Nullable<GenericDimensionStateStruct> T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetTargetState(ret); });
-    }
-    case Attributes::Resolution::Id: {
-        typedef Attributes::Resolution::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetResolution(ret); });
-    }
-    case Attributes::StepValue::Id: {
-        typedef Attributes::StepValue::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetStepValue(ret); });
-    }
-    case Attributes::Unit::Id: {
-        typedef Attributes::Unit::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetUnit(ret); });
-    }
-    case Attributes::UnitRange::Id: {
-        typedef Attributes::UnitRange::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetUnitRange(ret); });
-    }
-    case Attributes::LimitRange::Id: {
-        typedef Attributes::LimitRange::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetLimitRange(ret); });
-    }
-    case Attributes::TranslationDirection::Id: {
-        typedef Attributes::TranslationDirection::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetTranslationDirection(ret); });
-    }
-    case Attributes::RotationAxis::Id: {
-        typedef Attributes::RotationAxis::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetRotationAxis(ret); });
-    }
-    case Attributes::Overflow::Id: {
-        typedef Attributes::Overflow::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetOverflow(ret); });
-    }
-    case Attributes::ModulationType::Id: {
-        typedef Attributes::ModulationType::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetModulationType(ret); });
-    }
-    case Attributes::LatchControlModes::Id: {
-        typedef BitFlags<LatchControlModesBitmap> T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetLatchControlModes(ret); });
-    }
-    case Attributes::FeatureMap::Id: {
-        typedef BitFlags<Feature> T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetFeatureMap(ret); });
-    }
-    case Attributes::ClusterRevision::Id: {
-        typedef Attributes::ClusterRevision::TypeInfo::Type T;
-        return EncodeRead<T>(aEncoder, [this](T & ret) -> CHIP_ERROR { return this->GetClusterRevision(ret); });
-    }
-    default:
-        return CHIP_IM_GLOBAL_STATUS(UnsupportedAttribute);
-    }
-}
-
-void Interface::InvokeCommand(HandlerContext & handlerContext)
-{
-    switch (handlerContext.mRequestPath.mCommandId)
-    {
-    case Commands::SetTarget::Id:
-        HandleCommand<Commands::SetTarget::DecodableType>(handlerContext, [this](HandlerContext & ctx, const auto & commandData) {
-            Status status = this->HandleSetTargetCommand(commandData.position, commandData.latch, commandData.speed);
-            ctx.mCommandHandler.AddStatus(ctx.mRequestPath, status);
-        });
-        return;
-    case Commands::Step::Id:
-        HandleCommand<Commands::Step::DecodableType>(handlerContext, [this](HandlerContext & ctx, const auto & commandData) {
-            Status status = this->HandleStepCommand(commandData.direction, commandData.numberOfSteps, commandData.speed);
-            ctx.mCommandHandler.AddStatus(ctx.mRequestPath, status);
-        });
-        return;
-    default:
-        handlerContext.mCommandHandler.AddStatus(handlerContext.mRequestPath, Status::UnsupportedCommand);
-        return;
-    }
-}
-
-CHIP_ERROR Interface::Init()
-{
-    VerifyOrDieWithMsg(AttributeAccessInterfaceRegistry::Instance().Register(this), NotSpecified,
-                       "Failed to register attribute access");
-    VerifyOrDieWithMsg(CommandHandlerInterfaceRegistry::Instance().RegisterCommandHandler(this) == CHIP_NO_ERROR, NotSpecified,
-                       "Failed to register command handler");
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR Interface::Shutdown()
-{
-    VerifyOrDieWithMsg(CommandHandlerInterfaceRegistry::Instance().UnregisterCommandHandler(this) == CHIP_NO_ERROR, NotSpecified,
-                       "Failed to unregister command handler");
-    AttributeAccessInterfaceRegistry::Instance().Unregister(this);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR Interface::Init(const ClusterConformance & conformance, const ClusterInitParameters & clusterInitParameters)
-{
-    VerifyOrReturnError(!mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(conformance.Valid(), CHIP_ERROR_INVALID_DEVICE_DESCRIPTOR);
-    mConformance = conformance;
+    VerifyOrDieWithMsg(context.conformance.IsValid(), AppServer, "Invalid conformance");
 
     // Need to set TranslationDirection, RotationAxis, ModulationType before Initilization of closure, as they should not be changed
     // after Initalization.
-    if (conformance.HasFeature(Feature::kTranslation))
+    if (mConformance.HasFeature(Feature::kTranslation))
     {
-        ReturnErrorOnFailure(SetTranslationDirection(clusterInitParameters.translationDirection));
+        VerifyOrDieWithMsg(SetTranslationDirection(context.initParams.translationDirection) == CHIP_NO_ERROR, AppServer,
+                           "Failed to set translation direction");
     }
 
-    if (conformance.HasFeature(Feature::kRotation))
+    if (mConformance.HasFeature(Feature::kRotation))
     {
-        ReturnErrorOnFailure(SetRotationAxis(clusterInitParameters.rotationAxis));
+        VerifyOrDieWithMsg(SetRotationAxis(context.initParams.rotationAxis) == CHIP_NO_ERROR, AppServer,
+                           "Failed to set rotation axis");
     }
 
-    if (conformance.HasFeature(Feature::kModulation))
+    if (mConformance.HasFeature(Feature::kModulation))
     {
-        ReturnErrorOnFailure(SetModulationType(clusterInitParameters.modulationType));
+        VerifyOrDieWithMsg(SetModulationType(context.initParams.modulationType) == CHIP_NO_ERROR, AppServer,
+                           "Failed to set modulation type");
+    }
+}
+
+ClosureDimensionCluster::~ClosureDimensionCluster() {}
+
+CHIP_ERROR ClosureDimensionCluster::Attributes(const ConcreteClusterPath & path,
+                                               ReadOnlyBufferBuilder<DataModel::AttributeEntry> & builder)
+{
+    using OptionalEntry                = AttributeListBuilder::OptionalAttributeEntry;
+    OptionalEntry optionalAttributes[] = {
+        { mConformance.HasFeature(Feature::kPositioning), Attributes::Resolution::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kPositioning), Attributes::StepValue::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kUnit), Attributes::Unit::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kUnit), Attributes::UnitRange::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kLimitation), Attributes::LimitRange::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kTranslation), Attributes::TranslationDirection::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kRotation), Attributes::RotationAxis::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kRotation), Attributes::Overflow::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kModulation), Attributes::ModulationType::kMetadataEntry },
+        { mConformance.HasFeature(Feature::kMotionLatching), Attributes::LatchControlModes::kMetadataEntry },
+    };
+
+    AttributeListBuilder listBuilder(builder);
+    return listBuilder.Append(Span(Attributes::kMandatoryMetadata), Span(optionalAttributes));
+}
+
+CHIP_ERROR ClosureDimensionCluster::AcceptedCommands(const ConcreteClusterPath & path,
+                                                     ReadOnlyBufferBuilder<DataModel::AcceptedCommandEntry> & builder)
+{
+    const ClusterConformance & conformance = mConformance;
+
+    static constexpr DataModel::AcceptedCommandEntry kMandatoryCommands[] = {
+        Commands::SetTarget::kMetadataEntry,
+    };
+
+    static constexpr DataModel::AcceptedCommandEntry kStepCommand[] = {
+        Commands::Step::kMetadataEntry,
+    };
+
+    ReturnErrorOnFailure(builder.ReferenceExisting(kMandatoryCommands));
+    if (conformance.HasFeature(Feature::kPositioning))
+    {
+        ReturnErrorOnFailure(builder.ReferenceExisting(kStepCommand));
     }
 
-    mInitialized = true;
     return CHIP_NO_ERROR;
+}
+
+DataModel::ActionReturnStatus ClosureDimensionCluster::ReadAttribute(const DataModel::ReadAttributeRequest & request,
+                                                                     AttributeValueEncoder & encoder)
+{
+    switch (request.path.mAttributeId)
+    {
+    case Attributes::CurrentState::Id: {
+        return encoder.Encode(GetCurrentState());
+    }
+    case Attributes::TargetState::Id: {
+        return encoder.Encode(GetTargetState());
+    }
+    case Attributes::Resolution::Id: {
+        return encoder.Encode(GetResolution());
+    }
+    case Attributes::StepValue::Id: {
+        return encoder.Encode(GetStepValue());
+    }
+    case Attributes::Unit::Id: {
+        return encoder.Encode(GetUnit());
+    }
+    case Attributes::UnitRange::Id: {
+        return encoder.Encode(GetUnitRange());
+    }
+    case Attributes::LimitRange::Id: {
+        return encoder.Encode(GetLimitRange());
+    }
+    case Attributes::TranslationDirection::Id: {
+        return encoder.Encode(GetTranslationDirection());
+    }
+    case Attributes::RotationAxis::Id: {
+        return encoder.Encode(GetRotationAxis());
+    }
+    case Attributes::Overflow::Id: {
+        return encoder.Encode(GetOverflow());
+    }
+    case Attributes::ModulationType::Id: {
+        return encoder.Encode(GetModulationType());
+    }
+    case Attributes::LatchControlModes::Id: {
+        return encoder.Encode(GetLatchControlModes());
+    }
+    case Attributes::FeatureMap::Id: {
+        return encoder.Encode(GetFeatureMap());
+    }
+    case Attributes::ClusterRevision::Id: {
+        return encoder.Encode(kRevision);
+    }
+    default:
+        return Status::UnsupportedAttribute;
+    }
+}
+
+std::optional<DataModel::ActionReturnStatus> ClosureDimensionCluster::InvokeCommand(const DataModel::InvokeRequest & request,
+                                                                                    chip::TLV::TLVReader & input_arguments,
+                                                                                    CommandHandler * handler)
+{
+    switch (request.path.mCommandId)
+    {
+    case Commands::SetTarget::Id: {
+        Commands::SetTarget::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        return HandleSetTargetCommand(commandData.position, commandData.latch, commandData.speed);
+    }
+    case Commands::Step::Id: {
+        Commands::Step::DecodableType commandData;
+        ReturnErrorOnFailure(commandData.Decode(input_arguments));
+        return HandleStepCommand(commandData.direction, commandData.numberOfSteps, commandData.speed);
+    }
+    default:
+        return Status::UnsupportedCommand;
+    }
 }
 
 // Specification rules for CurrentState quiet reporting:
@@ -189,11 +201,10 @@ CHIP_ERROR Interface::Init(const ClusterConformance & conformance, const Cluster
 //  At present, we are using QuieterReportingAttribute class for Position only.
 //  Latch and Speed changes are directly handled by the cluster logic seperately.
 //  i.e Speed and latch changes are not considered when calucalting the at most 5 seconds quiet reportable changes for Position.
-CHIP_ERROR Interface::SetCurrentState(const DataModel::Nullable<GenericDimensionStateStruct> & incomingCurrentState)
+CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<GenericDimensionStateStruct> & incomingCurrentState)
 {
     assertChipStackLockedByCurrentThread();
 
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
     VerifyOrReturnError(mState.currentState != incomingCurrentState, CHIP_NO_ERROR);
 
     bool markDirty = false;
@@ -289,17 +300,16 @@ CHIP_ERROR Interface::SetCurrentState(const DataModel::Nullable<GenericDimension
 
     if (markDirty)
     {
-        mMatterContext.MarkDirty(Attributes::CurrentState::Id);
+        NotifyAttributeChanged(Attributes::CurrentState::Id);
     }
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetTargetState(const DataModel::Nullable<GenericDimensionStateStruct> & incomingTargetState)
+CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<GenericDimensionStateStruct> & incomingTargetState)
 {
     assertChipStackLockedByCurrentThread();
 
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
     VerifyOrReturnError(mState.targetState != incomingTargetState, CHIP_NO_ERROR);
 
     if (!incomingTargetState.IsNull())
@@ -317,11 +327,10 @@ CHIP_ERROR Interface::SetTargetState(const DataModel::Nullable<GenericDimensionS
                                     CHIP_ERROR_INVALID_ARGUMENT);
 
                 // Incoming TargetState Position value SHALL follow the scaling from Resolution Attribute.
-                Percent100ths resolution;
-                ReturnErrorOnFailure(GetResolution(resolution));
+                Percent100ths resolution = GetResolution();
                 VerifyOrReturnError(
                     incomingTargetState.Value().position.Value().Value() % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
-                    ChipLogError(NotSpecified, "TargetState Position value SHALL follow the scaling from Resolution Attribute"));
+                    ChipLogError(AppServer, "TargetState Position value SHALL follow the scaling from Resolution Attribute"));
             }
         }
 
@@ -346,88 +355,61 @@ CHIP_ERROR Interface::SetTargetState(const DataModel::Nullable<GenericDimensionS
         }
     }
 
-    mState.targetState = incomingTargetState;
-    mMatterContext.MarkDirty(Attributes::TargetState::Id);
+    SetAttributeValue(mState.targetState, incomingTargetState, Attributes::TargetState::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetResolution(const Percent100ths resolution)
+CHIP_ERROR ClosureDimensionCluster::SetResolution(const Percent100ths resolution)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(0 < resolution && resolution <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    if (resolution != mState.resolution)
-    {
-        mState.resolution = resolution;
-        mMatterContext.MarkDirty(Attributes::Resolution::Id);
-    }
+    SetAttributeValue(mState.resolution, resolution, Attributes::Resolution::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetStepValue(const Percent100ths stepValue)
+CHIP_ERROR ClosureDimensionCluster::SetStepValue(const Percent100ths stepValue)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(stepValue <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
 
     // StepValue SHALL be equal to an integer multiple of the Resolution attribute , if not return Invalid Argument.
-    Percent100ths resolution;
-    ReturnErrorOnFailure(GetResolution(resolution));
+    Percent100ths resolution = GetResolution();
     VerifyOrReturnError(stepValue % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
-                        ChipLogError(NotSpecified, "StepValue SHALL be equal to an integer multiple of the Resolution attribute"));
+                        ChipLogError(AppServer, "StepValue SHALL be equal to an integer multiple of the Resolution attribute"));
 
-    if (stepValue != mState.stepValue)
-    {
-        mState.stepValue = stepValue;
-        mMatterContext.MarkDirty(Attributes::StepValue::Id);
-    }
+    SetAttributeValue(mState.stepValue, stepValue, Attributes::StepValue::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetUnit(const ClosureUnitEnum unit)
+CHIP_ERROR ClosureDimensionCluster::SetUnit(const ClosureUnitEnum unit)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(unit) != ClosureUnitEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    if (unit != mState.unit)
-    {
-        mState.unit = unit;
-        mMatterContext.MarkDirty(Attributes::Unit::Id);
-    }
+    SetAttributeValue(mState.unit, unit, Attributes::Unit::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
+CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
     if (unitRange.IsNull())
     {
-        // Mark UnitRange attribute as dirty only if value changes.
-        if (!mState.unitRange.IsNull())
-        {
-            mState.unitRange.SetNull();
-            mMatterContext.MarkDirty(Attributes::UnitRange::Id);
-        }
+        mState.unitRange = DataModel::NullNullable;
+        NotifyAttributeChanged(Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
     }
 
     // Return error if unitRange is invalid
     VerifyOrReturnError(unitRange.Value().min <= unitRange.Value().max, CHIP_ERROR_INVALID_ARGUMENT);
 
-    ClosureUnitEnum unit;
-    ReturnErrorOnFailure(GetUnit(unit));
+    ClosureUnitEnum unit = GetUnit();
 
     // If Unit is Millimeter , Range values SHALL contain unsigned values from 0 to 32767 only
     if (unit == ClosureUnitEnum::kMillimeter)
@@ -447,26 +429,16 @@ CHIP_ERROR Interface::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeS
     // If the mState unitRange is null, we need to set it to the new value
     if (mState.unitRange.IsNull())
     {
-        mState.unitRange.SetNonNull(unitRange.Value());
-        mMatterContext.MarkDirty(Attributes::UnitRange::Id);
+        mState.unitRange = unitRange.Value();
+        NotifyAttributeChanged(Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
-    }
-
-    // If both the mState unitRange and unitRange are not null, we need to update mState unitRange if the values are different
-    if ((unitRange.Value().min != mState.unitRange.Value().min) || (unitRange.Value().max != mState.unitRange.Value().max))
-    {
-        mState.unitRange.Value().min = unitRange.Value().min;
-        mState.unitRange.Value().max = unitRange.Value().max;
-        mMatterContext.MarkDirty(Attributes::UnitRange::Id);
     }
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetLimitRange(const Structs::RangePercent100thsStruct::Type & limitRange)
+CHIP_ERROR ClosureDimensionCluster::SetLimitRange(const Structs::RangePercent100thsStruct::Type & limitRange)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kLimitation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
     // If the limit range is invalid, we need to return an error
@@ -475,69 +447,51 @@ CHIP_ERROR Interface::SetLimitRange(const Structs::RangePercent100thsStruct::Typ
     VerifyOrReturnError(limitRange.max <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
 
     // LimitRange.Min and LimitRange.Max SHALL be equal to an integer multiple of the Resolution attribute.
-    Percent100ths resolution;
-    ReturnErrorOnFailure(GetResolution(resolution));
+    Percent100ths resolution = GetResolution();
     VerifyOrReturnError(
         limitRange.min % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
-        ChipLogError(NotSpecified, "LimitRange.Min SHALL be equal to an integer multiple of the Resolution attribute."));
+        ChipLogError(AppServer, "LimitRange.Min SHALL be equal to an integer multiple of the Resolution attribute."));
     VerifyOrReturnError(
         limitRange.max % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
-        ChipLogError(NotSpecified, "LimitRange.Max SHALL be equal to an integer multiple of the Resolution attribute."));
+        ChipLogError(AppServer, "LimitRange.Max SHALL be equal to an integer multiple of the Resolution attribute."));
 
     if ((limitRange.min != mState.limitRange.min) || (limitRange.max != mState.limitRange.max))
     {
         mState.limitRange.min = limitRange.min;
         mState.limitRange.max = limitRange.max;
-        mMatterContext.MarkDirty(Attributes::LimitRange::Id);
+        NotifyAttributeChanged(Attributes::LimitRange::Id);
     }
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetTranslationDirection(const TranslationDirectionEnum translationDirection)
+CHIP_ERROR ClosureDimensionCluster::SetTranslationDirection(const TranslationDirectionEnum translationDirection)
 {
-    // This attribute is not supposed to change once the initialization is completed.
-    VerifyOrReturnError(!mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kTranslation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(translationDirection) != TranslationDirectionEnum::kUnknownEnumValue,
                         CHIP_ERROR_INVALID_ARGUMENT);
 
-    if (translationDirection != mState.translationDirection)
-    {
-        mState.translationDirection = translationDirection;
-        mMatterContext.MarkDirty(Attributes::TranslationDirection::Id);
-    }
+    SetAttributeValue(mState.translationDirection, translationDirection, Attributes::TranslationDirection::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetRotationAxis(const RotationAxisEnum rotationAxis)
+CHIP_ERROR ClosureDimensionCluster::SetRotationAxis(const RotationAxisEnum rotationAxis)
 {
-    // This attribute is not supposed to change once the initialization is completed
-    VerifyOrReturnError(!mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(rotationAxis) != RotationAxisEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    if (rotationAxis != mState.rotationAxis)
-    {
-        mState.rotationAxis = rotationAxis;
-        mMatterContext.MarkDirty(Attributes::RotationAxis::Id);
-    }
+    SetAttributeValue(mState.rotationAxis, rotationAxis, Attributes::RotationAxis::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetOverflow(const OverflowEnum overflow)
+CHIP_ERROR ClosureDimensionCluster::SetOverflow(const OverflowEnum overflow)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(overflow) != OverflowEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    RotationAxisEnum rotationAxis;
-    ReturnErrorOnFailure(GetRotationAxis(rotationAxis));
+    RotationAxisEnum rotationAxis = GetRotationAxis();
 
     // If the axis is centered, one part goes Outside and the other part goes Inside.
     // In this case, this attribute SHALL use Top/Bottom/Left/Right Inside or Top/Bottom/Left/Right Outside enumerated value.
@@ -548,168 +502,103 @@ CHIP_ERROR Interface::SetOverflow(const OverflowEnum overflow)
                             CHIP_ERROR_INVALID_ARGUMENT);
     }
 
-    if (overflow != mState.overflow)
-    {
-        mState.overflow = overflow;
-        mMatterContext.MarkDirty(Attributes::Overflow::Id);
-    }
+    SetAttributeValue(mState.overflow, overflow, Attributes::Overflow::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetModulationType(const ModulationTypeEnum modulationType)
+CHIP_ERROR ClosureDimensionCluster::SetModulationType(const ModulationTypeEnum modulationType)
 {
-    // This attribute is not supposed to change once the initialization is completed
-    VerifyOrReturnError(!mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kModulation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(modulationType) != ModulationTypeEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    if (modulationType != mState.modulationType)
-    {
-        mState.modulationType = modulationType;
-        mMatterContext.MarkDirty(Attributes::ModulationType::Id);
-    }
+    SetAttributeValue(mState.modulationType, modulationType, Attributes::ModulationType::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
+CHIP_ERROR ClosureDimensionCluster::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-
     VerifyOrReturnError(mConformance.HasFeature(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
-    if (mState.latchControlModes != latchControlModes)
-    {
-        mState.latchControlModes = latchControlModes;
-        mMatterContext.MarkDirty(Attributes::LatchControlModes::Id);
-    }
+    SetAttributeValue(mState.latchControlModes, latchControlModes, Attributes::LatchControlModes::Id);
 
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR Interface::GetCurrentState(DataModel::Nullable<GenericDimensionStateStruct> & currentState)
+DataModel::Nullable<GenericDimensionStateStruct> ClosureDimensionCluster::GetCurrentState() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    currentState = mState.currentState;
-    return CHIP_NO_ERROR;
+    return mState.currentState;
 }
 
-CHIP_ERROR Interface::GetTargetState(DataModel::Nullable<GenericDimensionStateStruct> & targetState)
+DataModel::Nullable<GenericDimensionStateStruct> ClosureDimensionCluster::GetTargetState() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    targetState = mState.targetState;
-    return CHIP_NO_ERROR;
+    return mState.targetState;
 }
 
-CHIP_ERROR Interface::GetResolution(Percent100ths & resolution)
+Percent100ths ClosureDimensionCluster::GetResolution() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    resolution = mState.resolution;
-    return CHIP_NO_ERROR;
+    return mState.resolution;
 }
 
-CHIP_ERROR Interface::GetStepValue(Percent100ths & stepValue)
+Percent100ths ClosureDimensionCluster::GetStepValue() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    stepValue = mState.stepValue;
-    return CHIP_NO_ERROR;
+    return mState.stepValue;
 }
 
-CHIP_ERROR Interface::GetUnit(ClosureUnitEnum & unit)
+ClosureUnitEnum ClosureDimensionCluster::GetUnit() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    unit = mState.unit;
-    return CHIP_NO_ERROR;
+    return mState.unit;
+}
+DataModel::Nullable<Structs::UnitRangeStruct::Type> ClosureDimensionCluster::GetUnitRange() const
+{
+    return mState.unitRange;
+}
+Structs::RangePercent100thsStruct::Type ClosureDimensionCluster::GetLimitRange() const
+{
+    return mState.limitRange;
 }
 
-CHIP_ERROR Interface::GetUnitRange(DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
+TranslationDirectionEnum ClosureDimensionCluster::GetTranslationDirection() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    unitRange = mState.unitRange;
-    return CHIP_NO_ERROR;
+    return mState.translationDirection;
 }
 
-CHIP_ERROR Interface::GetLimitRange(Structs::RangePercent100thsStruct::Type & limitRange)
+RotationAxisEnum ClosureDimensionCluster::GetRotationAxis() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kLimitation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    limitRange = mState.limitRange;
-    return CHIP_NO_ERROR;
+    return mState.rotationAxis;
 }
 
-CHIP_ERROR Interface::GetTranslationDirection(TranslationDirectionEnum & translationDirection)
+OverflowEnum ClosureDimensionCluster::GetOverflow() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kTranslation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    translationDirection = mState.translationDirection;
-    return CHIP_NO_ERROR;
+    return mState.overflow;
 }
 
-CHIP_ERROR Interface::GetRotationAxis(RotationAxisEnum & rotationAxis)
+ModulationTypeEnum ClosureDimensionCluster::GetModulationType() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    rotationAxis = mState.rotationAxis;
-    return CHIP_NO_ERROR;
+    return mState.modulationType;
 }
 
-CHIP_ERROR Interface::GetOverflow(OverflowEnum & overflow)
+BitFlags<LatchControlModesBitmap> ClosureDimensionCluster::GetLatchControlModes() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError((mConformance.HasFeature(Feature::kRotation)), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    overflow = mState.overflow;
-    return CHIP_NO_ERROR;
+    return mState.latchControlModes;
 }
 
-CHIP_ERROR Interface::GetModulationType(ModulationTypeEnum & modulationType)
+BitFlags<Feature> ClosureDimensionCluster::GetFeatureMap() const
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kModulation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    modulationType = mState.modulationType;
-    return CHIP_NO_ERROR;
+    return mConformance.FeatureMap();
 }
 
-CHIP_ERROR Interface::GetLatchControlModes(BitFlags<LatchControlModesBitmap> & latchControlModes)
+Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> position, Optional<bool> latch,
+                                                       Optional<Globals::ThreeLevelAutoEnum> speed)
 {
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    latchControlModes = mState.latchControlModes;
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR Interface::GetFeatureMap(BitFlags<Feature> & featureMap)
-{
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    featureMap = mConformance.FeatureMap();
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR Interface::GetClusterRevision(Attributes::ClusterRevision::TypeInfo::Type & clusterRevision)
-{
-    VerifyOrReturnError(mInitialized, CHIP_ERROR_INCORRECT_STATE);
-    clusterRevision = ClosureDimension::kRevision;
-    return CHIP_NO_ERROR;
-}
-
-Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optional<bool> latch,
-                                         Optional<Globals::ThreeLevelAutoEnum> speed)
-{
-    VerifyOrDieWithMsg(mInitialized, AppServer, "Unexpected command received when closure is yet to be initialized");
-
     //  If all command parameters don't have a value, return InvalidCommand
     VerifyOrReturnError(position.HasValue() || latch.HasValue() || speed.HasValue(), Status::InvalidCommand);
 
     // TODO: If this command is sent while the closure is in a non-compatible internal-state, a status code of
     // INVALID_IN_STATE SHALL be returned.
 
-    DataModel::Nullable<GenericDimensionStateStruct> targetState;
-    VerifyOrReturnError(GetTargetState(targetState) == CHIP_NO_ERROR, Status::Failure);
+    DataModel::Nullable<GenericDimensionStateStruct> targetState = GetTargetState();
 
     // If targetState is null, we need to initialize to default value.
     // This is to ensure that we can set the position, latch, and speed values in the targetState.
@@ -727,10 +616,7 @@ Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optio
         // LimitRange.Min and LimitRange.Max.
         if (mConformance.HasFeature(Feature::kLimitation))
         {
-            Structs::RangePercent100thsStruct::Type limitRange;
-
-            VerifyOrReturnError(GetLimitRange(limitRange) == CHIP_NO_ERROR, Status::Failure);
-
+            Structs::RangePercent100thsStruct::Type limitRange = GetLimitRange();
             if (position.Value() > limitRange.max)
             {
                 position.Value() = limitRange.max;
@@ -742,9 +628,7 @@ Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optio
             }
         }
 
-        Percent100ths resolution;
-        VerifyOrReturnError(GetResolution(resolution) == CHIP_NO_ERROR, Status::Failure,
-                            ChipLogError(AppServer, "Unable to get Resolution value while handling SetTarget command"));
+        Percent100ths resolution = GetResolution();
         // Check if position.Value() is an integer multiple of resolution, else round to nearest valid value
         if (position.Value() % resolution != 0)
         {
@@ -779,8 +663,7 @@ Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optio
     }
 
     // Check if the current position is valid or else return InvalidInState
-    DataModel::Nullable<GenericDimensionStateStruct> currentState;
-    VerifyOrReturnError(GetCurrentState(currentState) == CHIP_NO_ERROR, Status::Failure);
+    DataModel::Nullable<GenericDimensionStateStruct> currentState = GetCurrentState();
     VerifyOrReturnError(!currentState.IsNull(), Status::InvalidInState);
     if (mConformance.HasFeature(Feature::kPositioning))
     {
@@ -799,7 +682,7 @@ Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optio
                                 ChipLogError(AppServer,
                                              "Latch is True in State, but SetTarget command does not set latch to False"
                                              "when position change is requested on endpoint : %d",
-                                             mMatterContext.GetEndpointId()));
+                                             GetEndpointId()));
         }
     }
 
@@ -811,11 +694,9 @@ Status Interface::HandleSetTargetCommand(Optional<Percent100ths> position, Optio
     return Status::Success;
 }
 
-Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t numberOfSteps,
-                                    Optional<Globals::ThreeLevelAutoEnum> speed)
+Status ClosureDimensionCluster::HandleStepCommand(StepDirectionEnum direction, uint16_t numberOfSteps,
+                                                  Optional<Globals::ThreeLevelAutoEnum> speed)
 {
-    VerifyOrDieWithMsg(mInitialized, NotSpecified, "Unexpected command recieved when closure is yet to be initialized");
-
     // Return UnsupportedCommand if Positioning feature is not supported.
     VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), Status::UnsupportedCommand);
 
@@ -823,8 +704,7 @@ Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t number
     VerifyOrReturnError(direction != StepDirectionEnum::kUnknownEnumValue, Status::ConstraintError);
     VerifyOrReturnError(numberOfSteps > 0, Status::ConstraintError);
 
-    DataModel::Nullable<GenericDimensionStateStruct> stepTarget;
-    VerifyOrReturnError(GetTargetState(stepTarget) == CHIP_NO_ERROR, Status::Failure);
+    DataModel::Nullable<GenericDimensionStateStruct> stepTarget = GetTargetState();
 
     if (stepTarget.IsNull())
     {
@@ -844,8 +724,7 @@ Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t number
     // INVALID_IN_STATE response and the TargetState attribute value SHALL remain unchanged.
 
     // Check if the current position is valid or else return InvalidInState
-    DataModel::Nullable<GenericDimensionStateStruct> currentState;
-    VerifyOrReturnError(GetCurrentState(currentState) == CHIP_NO_ERROR, Status::Failure);
+    DataModel::Nullable<GenericDimensionStateStruct> currentState = GetCurrentState();
     VerifyOrReturnError(!currentState.IsNull(), Status::InvalidInState);
     VerifyOrReturnError(currentState.Value().position.HasValue() && !currentState.Value().position.Value().IsNull(),
                         Status::InvalidInState);
@@ -858,14 +737,13 @@ Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t number
                                 ChipLogError(AppServer,
                                              "Step command cannot be processed when current latch is True"
                                              "on endpoint : %d",
-                                             mMatterContext.GetEndpointId()));
+                                             GetEndpointId()));
         }
         // Return InvalidInState if currentState is latched
     }
 
     // Derive TargetState Position from StepValue and NumberOfSteps.
-    Percent100ths stepValue;
-    VerifyOrReturnError(GetStepValue(stepValue) == CHIP_NO_ERROR, Status::Failure);
+    Percent100ths stepValue = GetStepValue();
 
     // Convert step to position delta.
     // As StepValue can only take maxvalue of kPercents100thsMaxValue(which is 10000). Below product will be within limits of
@@ -880,7 +758,7 @@ Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t number
 
     if (limitSupported)
     {
-        VerifyOrReturnError(GetLimitRange(limitRange) == CHIP_NO_ERROR, Status::Failure);
+        limitRange = GetLimitRange();
     }
 
     // Position = Position - NumberOfSteps * StepValue
@@ -925,8 +803,3 @@ Status Interface::HandleStepCommand(StepDirectionEnum direction, uint16_t number
 } // namespace Clusters
 } // namespace app
 } // namespace chip
-
-// -----------------------------------------------------------------------------
-// Plugin initialization
-
-void MatterClosureDimensionPluginServerInitCallback() {}

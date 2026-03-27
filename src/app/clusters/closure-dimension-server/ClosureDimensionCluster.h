@@ -16,13 +16,19 @@
  *
  */
 #pragma once
-#include "ClosureDimensionClusterDelegate.h"
-#include "ClosureDimensionClusterMatterContext.h"
-#include "GenericDimensionState.h"
-#include <app/cluster-building-blocks/QuieterReporting.h>
+#include <app/server-cluster/DefaultServerCluster.h>
+#include <app/server-cluster/OptionalAttributeSet.h>
+#include <clusters/ClosureControl/Attributes.h>
+#include <clusters/ClosureControl/Commands.h>
+#include <clusters/ClosureControl/Metadata.h>
 
-#include <app/AttributeAccessInterfaceRegistry.h>
-#include <app/CommandHandlerInterfaceRegistry.h>
+#include <app/cluster-building-blocks/QuieterReporting.h>
+#include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
+#include <app/clusters/closure-dimension-server/GenericDimensionState.h>
+#include <lib/core/CHIPError.h>
+#include <lib/support/BitFlags.h>
+#include <lib/support/TimerDelegate.h>
+#include <lib/support/logging/CHIPLogging.h>
 
 namespace chip {
 namespace app {
@@ -55,7 +61,7 @@ struct ClusterConformance
      * @return true, the cluster confirmance is valid
      *         false, otherwise
      */
-    bool Valid() const
+    bool IsValid() const
     {
         // Positioning or Matching must be enabled
         VerifyOrReturnValue(HasFeature(Feature::kPositioning) || HasFeature(Feature::kMotionLatching), false,
@@ -121,55 +127,31 @@ struct ClusterState
     BitFlags<LatchControlModesBitmap> latchControlModes;
 };
 
-/**
- *  @brief Class implements the client facing APIs to read, write and process incoming commands
- *          App should instantiate and init one Interface per endpoint
- */
-class Interface : public AttributeAccessInterface, public CommandHandlerInterface
+class ClosureDimensionCluster : public DefaultServerCluster
 {
 public:
-    Interface(EndpointId endpoint, DelegateBase & delegate, MatterContext & matterContext) :
-        AttributeAccessInterface(Optional<EndpointId>(endpoint), Id), CommandHandlerInterface(Optional<EndpointId>(endpoint), Id),
-        mDelegate(delegate), mMatterContext(matterContext)
-    {}
+    struct Context
+    {
+        ClosureDimensionClusterDelegate & delegate;
+        TimerDelegate & timerDelegate;
+        const ClusterConformance & conformance;
+        const ClusterInitParameters & initParams;
+    };
 
-    // AttributeAccessInterface implementation
+    ClosureDimensionCluster(EndpointId endpoint, const Context & context);
+    ~ClosureDimensionCluster();
 
-    CHIP_ERROR Read(const ConcreteReadAttributePath & aPath, AttributeValueEncoder & aEncoder) override;
+    CHIP_ERROR Attributes(const ConcreteClusterPath & path, ReadOnlyBufferBuilder<DataModel::AttributeEntry> & builder) override;
 
-    // CommandHandlerInterface implementation
+    CHIP_ERROR AcceptedCommands(const ConcreteClusterPath & path,
+                                ReadOnlyBufferBuilder<DataModel::AcceptedCommandEntry> & builder) override;
 
-    void InvokeCommand(HandlerContext & handlerContext) override;
+    DataModel::ActionReturnStatus ReadAttribute(const DataModel::ReadAttributeRequest & request,
+                                                AttributeValueEncoder & encoder) override;
 
-    /**
-     * @brief This function registers attribute access and command handler.
-     * @return CHIP_NO_ERROR when succesfully initialized.
-     *          Aborts if registration fails.
-     */
-    CHIP_ERROR Init();
-
-    /**
-     * @brief This function unregisters attribute access and command handlers.
-     * @return CHIP_NO_ERROR when succesfully initialized
-     *          Aborts if attribute access unregistration fails.
-     */
-    CHIP_ERROR Shutdown();
-
-    const ClusterState & GetState() { return mState; }
-    const ClusterConformance & GetConformance() { return mConformance; }
-
-    /**
-     *  @brief Validates the conformance and performs initialisation and sets up the ClusterInitParameters into Attributes.
-     *
-     *  @param [in] conformance cluster conformance
-     *  @param [in] clusterInitParameters cluster Init Parameters
-     *
-     *  @return CHIP_ERROR_INCORRECT_STATE if the cluster has already been initialized,
-     *          CHIP_ERROR_INVALID_DEVICE_DESCRIPTOR if the conformance is incorrect.
-     *          Set function errors if setting the attributes with the provided ClusterInitParameters fails.
-     *          CHIP_NO_ERROR on succesful initialisation.
-     */
-    CHIP_ERROR Init(const ClusterConformance & conformance, const ClusterInitParameters & clusterInitParameters);
+    std::optional<DataModel::ActionReturnStatus> InvokeCommand(const DataModel::InvokeRequest & request,
+                                                               chip::TLV::TLVReader & input_arguments,
+                                                               CommandHandler * handler) override;
 
     /**
      * @brief Set Current State.
@@ -278,23 +260,21 @@ public:
     CHIP_ERROR SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes);
 
     // All Get functions:
-    // Return CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized.
     // Return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if the attribute is not supported.
     // Otherwise return CHIP_NO_ERROR and set the input parameter value to the current cluster state value
-    CHIP_ERROR GetCurrentState(DataModel::Nullable<GenericDimensionStateStruct> & currentState);
-    CHIP_ERROR GetTargetState(DataModel::Nullable<GenericDimensionStateStruct> & targetState);
-    CHIP_ERROR GetResolution(Percent100ths & resolution);
-    CHIP_ERROR GetStepValue(Percent100ths & stepValue);
-    CHIP_ERROR GetUnit(ClosureUnitEnum & unit);
-    CHIP_ERROR GetUnitRange(DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange);
-    CHIP_ERROR GetLimitRange(Structs::RangePercent100thsStruct::Type & limitRange);
-    CHIP_ERROR GetTranslationDirection(TranslationDirectionEnum & translationDirection);
-    CHIP_ERROR GetRotationAxis(RotationAxisEnum & rotationAxis);
-    CHIP_ERROR GetOverflow(OverflowEnum & overflow);
-    CHIP_ERROR GetModulationType(ModulationTypeEnum & modulationType);
-    CHIP_ERROR GetLatchControlModes(BitFlags<LatchControlModesBitmap> & latchControlModes);
-    CHIP_ERROR GetFeatureMap(BitFlags<Feature> & featureMap);
-    CHIP_ERROR GetClusterRevision(Attributes::ClusterRevision::TypeInfo::Type & clusterRevision);
+    DataModel::Nullable<GenericDimensionStateStruct> GetCurrentState() const;
+    DataModel::Nullable<GenericDimensionStateStruct> GetTargetState() const;
+    Percent100ths GetResolution() const;
+    Percent100ths GetStepValue() const;
+    ClosureUnitEnum GetUnit() const;
+    DataModel::Nullable<Structs::UnitRangeStruct::Type> GetUnitRange() const;
+    Structs::RangePercent100thsStruct::Type GetLimitRange() const;
+    TranslationDirectionEnum GetTranslationDirection() const;
+    RotationAxisEnum GetRotationAxis() const;
+    OverflowEnum GetOverflow() const;
+    ModulationTypeEnum GetModulationType() const;
+    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const;
+    BitFlags<Feature> GetFeatureMap() const;
 
     /**
      *  @brief Calls delegate HandleSetTarget function after validating the parameters and conformance.
@@ -374,16 +354,17 @@ private:
      */
     CHIP_ERROR SetModulationType(const ModulationTypeEnum modulationType);
 
-    bool mInitialized = false;
-    ClusterState mState;
+    ClosureDimensionClusterDelegate & mDelegate;
+    TimerDelegate & mTimerDelegate;
     ClusterConformance mConformance;
-    DelegateBase & mDelegate;
-    MatterContext & mMatterContext;
+    ClusterState mState;
 
     // At Present, QuieterReportingAttribute doesnt support Structs.
     // So, this variable will be used for Quietreporting of current state position.
     // TODO: Refactor CurrentState Atrribute to use QuieterReportingAttribute once Issue#39801 is resolved
     QuieterReportingAttribute<Percent100ths> quietReportableCurrentStatePosition{ DataModel::NullNullable };
+
+    EndpointId GetEndpointId() { return mPath.mEndpointId; }
 };
 
 } // namespace ClosureDimension

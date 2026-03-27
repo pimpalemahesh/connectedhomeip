@@ -18,3 +18,22 @@
 #pragma once
 
 #include <app/clusters/closure-dimension-server/ClosureDimensionCluster.h>
+#include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
+
+namespace chip {
+namespace app {
+namespace Clusters {
+namespace ClosureDimension {
+
+ClosureDimensionCluster * GetInstance(EndpointId endpointId);
+
+void MatterClosureDimensionSetDelegate(EndpointId endpointId, ClosureDimensionClusterDelegate & delegate);
+
+void MatterClosureDimensionSetConformance(EndpointId endpointId, const ClusterConformance & conformance);
+
+void MatterClosureDimensionSetInitParams(EndpointId endpointId, const ClusterInitParameters & initParams);
+
+} // namespace ClosureDimension
+} // namespace Clusters
+} // namespace app
+} // namespace chip

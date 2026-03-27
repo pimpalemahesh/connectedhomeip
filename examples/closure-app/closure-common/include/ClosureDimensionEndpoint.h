@@ -18,9 +18,7 @@
 
 #pragma once
 
-#include <app/clusters/closure-dimension-server/closure-dimension-cluster-objects.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-delegate.h>
-#include <app/clusters/closure-dimension-server/closure-dimension-matter-context.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-server.h>
 
 #include <app-common/zap-generated/cluster-objects.h>
@@ -43,7 +41,7 @@ using Protocols::InteractionModel::Status;
  * according to specific business logic. It is designed to be used as a delegate for the Closure Dimension cluster.
  *
  */
-class ClosureDimensionDelegate : public DelegateBase
+class ClosureDimensionDelegate : public ClosureDimensionClusterDelegate
 {
 public:
     ClosureDimensionDelegate(EndpointId endpoint) : mEndpoint(endpoint) {}
@@ -71,9 +69,17 @@ public:
      */
     void SetStepCommandTargetDirection(StepDirectionEnum direction) { mStepCommandTargetDirection = direction; }
 
+    /**
+     * @brief Function to set the cluster instance.
+     */
+    void SetClusterInstance(ClosureDimensionCluster * clusterInstance) { mClusterInstance = clusterInstance; }
+
+    ClosureDimensionCluster & GetClusterInstance() { return *mClusterInstance; }
+
 private:
     EndpointId mEndpoint                          = kInvalidEndpointId;
     StepDirectionEnum mStepCommandTargetDirection = StepDirectionEnum::kUnknownEnumValue;
+    ClosureDimensionCluster * mClusterInstance    = nullptr;
 };
 
 /**
@@ -91,14 +97,34 @@ private:
 class ClosureDimensionEndpoint
 {
 public:
-    ClosureDimensionEndpoint(EndpointId endpoint) :
-        mEndpoint(endpoint), mContext(mEndpoint), mDelegate(mEndpoint), mInterface(mEndpoint, mDelegate, mContext)
-    {}
+    ClosureDimensionEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(mEndpoint), mClusterInstance(nullptr)
+    {
+        ClusterConformance conformance;
+        conformance.FeatureMap()
+            .Set(Feature::kPositioning)
+            .Set(Feature::kMotionLatching)
+            .Set(Feature::kUnit)
+            .Set(Feature::kLimitation)
+            .Set(Feature::kSpeed)
+            .Set(Feature::kRotation);
+
+        ClusterInitParameters clusterInitParameters;
+        clusterInitParameters.translationDirection = TranslationDirectionEnum::kDownward;
+        clusterInitParameters.rotationAxis         = RotationAxisEnum::kCenteredVertical;
+        clusterInitParameters.modulationType       = ModulationTypeEnum::kVentilation;
+
+        MatterClosureDimensionSetConformance(mEndpoint, conformance);
+        MatterClosureDimensionSetInitParams(mEndpoint, clusterInitParameters);
+        MatterClosureDimensionSetDelegate(mEndpoint, mDelegate);
+    }
 
     /**
      * @brief Initializes the ClosureDimensionEndpoint instance.
      *
-     * @return CHIP_ERROR indicating the result of the initialization.
+     * It initializes the Cluster Instance for the Closure Dimension Endpoint and sets the same instance to the delegate.
+     *
+     * @return CHIP_ERROR_INTERNAL if the Closure Dimension Cluster is not Initialized
+     *         CHIP_NO_ERROR in case of success
      */
     CHIP_ERROR Init();
 
@@ -112,9 +138,9 @@ public:
     /**
      * @brief Retrieves the cluster instance associated with this Closure Dimension endpoint.
      *
-     * @return Reference to the Interface instance.
+     * @return Reference to the ClosureDimensionCluster instance.
      */
-    Interface & GetClusterInstance() { return mInterface; }
+    ClosureDimensionCluster & GetClusterInstance() { return *mClusterInstance; }
 
     /**
      * @brief Handles the completion of a stop motion action.
@@ -172,9 +198,8 @@ public:
 
 private:
     EndpointId mEndpoint = kInvalidEndpointId;
-    MatterContext mContext;
     ClosureDimensionDelegate mDelegate;
-    Interface mInterface;
+    ClosureDimensionCluster * mClusterInstance = nullptr;
 
     /**
      * @brief Updates the current state of the closure dimension endpoint from the target state.

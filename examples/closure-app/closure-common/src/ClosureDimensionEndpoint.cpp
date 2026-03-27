@@ -49,22 +49,10 @@ Status ClosureDimensionDelegate::HandleStep(const StepDirectionEnum & direction,
 
 CHIP_ERROR ClosureDimensionEndpoint::Init()
 {
-    ClusterConformance conformance;
-    conformance.FeatureMap()
-        .Set(Feature::kPositioning)
-        .Set(Feature::kMotionLatching)
-        .Set(Feature::kUnit)
-        .Set(Feature::kLimitation)
-        .Set(Feature::kSpeed)
-        .Set(Feature::kRotation);
 
-    ClusterInitParameters clusterInitParameters;
-    clusterInitParameters.translationDirection = TranslationDirectionEnum::kDownward;
-    clusterInitParameters.rotationAxis         = RotationAxisEnum::kCenteredVertical;
-    clusterInitParameters.modulationType       = ModulationTypeEnum::kVentilation;
-
-    ReturnErrorOnFailure(mInterface.Init(conformance, clusterInitParameters));
-    ReturnErrorOnFailure(mInterface.Init());
+    mClusterInstance = GetInstance(mEndpoint);
+    VerifyOrReturnError(mClusterInstance != nullptr, CHIP_ERROR_INTERNAL);
+    mDelegate.SetClusterInstance(mClusterInstance);
     return CHIP_NO_ERROR;
 }
 
@@ -73,16 +61,16 @@ void ClosureDimensionEndpoint::OnStopMotionActionComplete()
     // Set the Position, latch in OverallTargetState to Null and speed to Auto as the motion has been stopped.
     GenericDimensionStateStruct targetState =
         GenericDimensionStateStruct(NullOptional, NullOptional, MakeOptional(Globals::ThreeLevelAutoEnum::kAuto));
-    VerifyOrReturn(mInterface.SetTargetState(DataModel::MakeNullable(targetState)) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClusterInstance->SetTargetState(DataModel::MakeNullable(targetState)) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to set target in OnStopMotionActionComplete"));
 }
 
 void ClosureDimensionEndpoint::OnStopCalibrateActionComplete()
 {
     // Current state and target are set to null after calibration is stopped to indicate an unknown state.
-    VerifyOrReturn(mInterface.SetCurrentState(DataModel::NullNullable) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClusterInstance->SetCurrentState(DataModel::NullNullable) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to set current state to null in OnStopCalibrateActionComplete"));
-    VerifyOrReturn(mInterface.SetTargetState(DataModel::NullNullable) == CHIP_NO_ERROR,
+    VerifyOrReturn(mClusterInstance->SetTargetState(DataModel::NullNullable) == CHIP_NO_ERROR,
                    ChipLogError(AppServer, "Failed to set target to null in OnStopCalibrateActionComplete"));
 }
 
@@ -92,8 +80,8 @@ void ClosureDimensionEndpoint::OnCalibrateActionComplete()
         GenericDimensionStateStruct(MakeOptional(DataModel::MakeNullable(kFullClosedTargetPosition)),
                                     MakeOptional(DataModel::MakeNullable(true)), MakeOptional(Globals::ThreeLevelAutoEnum::kAuto)));
     DataModel::Nullable<GenericDimensionStateStruct> targetState{ DataModel::NullNullable };
-    LogErrorOnFailure(mInterface.SetCurrentState(currentState));
-    LogErrorOnFailure(mInterface.SetTargetState(targetState));
+    LogErrorOnFailure(mClusterInstance->SetCurrentState(currentState));
+    LogErrorOnFailure(mClusterInstance->SetTargetState(targetState));
 }
 
 void ClosureDimensionEndpoint::OnMoveToActionComplete()
@@ -103,13 +91,8 @@ void ClosureDimensionEndpoint::OnMoveToActionComplete()
 
 void ClosureDimensionEndpoint::UpdateCurrentStateFromTargetState()
 {
-    DataModel::Nullable<GenericDimensionStateStruct> currentState;
-    DataModel::Nullable<GenericDimensionStateStruct> targetState;
-
-    VerifyOrReturn(mInterface.GetCurrentState(currentState) == CHIP_NO_ERROR,
-                   ChipLogError(AppServer, "Failed to get current state, Updating CurrentState From TargetState Failed"));
-    VerifyOrReturn(mInterface.GetTargetState(targetState) == CHIP_NO_ERROR,
-                   ChipLogError(AppServer, "Failed to get target state, Updating CurrentState From TargetState Failed"));
+    DataModel::Nullable<GenericDimensionStateStruct> currentState = mClusterInstance->GetCurrentState();
+    DataModel::Nullable<GenericDimensionStateStruct> targetState  = mClusterInstance->GetTargetState();
 
     VerifyOrReturn(!targetState.IsNull(),
                    ChipLogError(AppServer, "Target state is null, Updating CurrentState From TargetState Failed"));
@@ -131,7 +114,7 @@ void ClosureDimensionEndpoint::UpdateCurrentStateFromTargetState()
         currentState.Value().speed.SetValue(targetState.Value().speed.Value());
     }
 
-    LogErrorOnFailure(mInterface.SetCurrentState(currentState));
+    LogErrorOnFailure(mClusterInstance->SetCurrentState(currentState));
 }
 
 void ClosureDimensionEndpoint::OnPanelMotionActionComplete()

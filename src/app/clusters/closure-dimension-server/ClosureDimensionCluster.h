@@ -71,7 +71,7 @@ struct ClusterConformance
         {
             VerifyOrReturnValue(
                 HasFeature(Feature::kPositioning), false,
-                ChipLogError(AppServer, "Validation failed: Unit , Limitation, and speed requires the Positioning feature."));
+                ChipLogError(AppServer, "Validation failed: Unit, Limitation, and speed requires the Positioning feature."));
         }
 
         // If Translation, Rotation or Modulation is enabled, Positioning must be enabled.
@@ -79,7 +79,7 @@ struct ClusterConformance
         {
             VerifyOrReturnValue(
                 HasFeature(Feature::kPositioning), false,
-                ChipLogError(NotSpecified, "Validation failed: Translation, Rotation or Modulation requires Positioning enabled."));
+                ChipLogError(AppServer, "Validation failed: Translation, Rotation or Modulation requires Positioning enabled."));
         }
 
         // Only one of Translation, Rotation or Modulation features must be enabled. Return false otherwise.

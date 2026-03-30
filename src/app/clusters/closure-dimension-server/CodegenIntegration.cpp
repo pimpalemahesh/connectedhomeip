@@ -84,7 +84,7 @@ void MatterClosureDimensionSetInitParams(EndpointId endpointId, const ClusterIni
 
 void MatterClosureDimensionClusterInitCallback(EndpointId endpointId)
 {
-    if (endpointId > kClosureDimensionMaxClusterCount)
+    if (endpointId >= kClosureDimensionMaxClusterCount)
     {
         ChipLogError(Zcl, "Closure Dimension Cluster cannot be initialized on endpoint %u. Endpoint ID is out of range.",
                      endpointId);

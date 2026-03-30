@@ -30,22 +30,28 @@ namespace {
 static constexpr uint32_t kDACPrivateKeySize = 32;
 static constexpr uint32_t kDACPublicKeySize  = 65;
 
+/**
+ * @brief Get the manufacturing date or suffix from the ESP32 config.
+ *
+ * @Note: The manufacturing date is stored in the format YYYY-MM-DD<vendor info> or YYYYMMDD<vendor info>.
+ * To retrive only the manufacturing date, pass nullptr for vendorSuffixSpan.
+ * To retrive only the vendor suffix, pass a non-empty MutableCharSpan for vendorSuffixSpan and nullptr for year, month, and day.
+ * @param year The year to store the manufacturing date.
+ * @param month The month to store the manufacturing date.
+ * @param day The day to store the manufacturing date.
+ * @param vendorSuffixSpan The vendor suffix to store the manufacturing date. @Note: It not gaurenteed to be null terminated and
+ * should be treated as a raw string.
+ * @return CHIP_ERROR indicating the success or failure of the operation.
+ */
 inline CHIP_ERROR GetManufacturingDateOrSuffix(uint16_t * year, uint8_t * month, uint8_t * day, MutableCharSpan * vendorSuffixSpan)
 {
-    VerifyOrReturnError((year != nullptr && month != nullptr && day != nullptr) || vendorSuffixSpan != nullptr,
-                        CHIP_ERROR_INVALID_ARGUMENT);
-    CHIP_ERROR err                               = CHIP_NO_ERROR;
-    constexpr size_t kMaxManufacturingDateLength = 16; // YYYY-MM-DD<vendor info> or YYYYMMDD<vendor info>
-    constexpr size_t kMaxDateLength              = 8;  // YYYYMMDD
-    char dateStr[kMaxManufacturingDateLength + 1];
-    size_t dateLen;
-    err = ESP32Config::ReadConfigValueStr(ESP32Config::kConfigKey_ManufacturingDate, dateStr, sizeof(dateStr), dateLen);
-    if (err != CHIP_NO_ERROR && err != CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND)
-    {
-        ChipLogError(DeviceLayer, "Invalid manufacturing date: %s", dateStr);
-        return err;
-    }
-    VerifyOrReturnError(dateLen >= kMaxDateLength && dateLen <= kMaxManufacturingDateLength, CHIP_ERROR_INVALID_ARGUMENT);
+    constexpr size_t kMaxManufacturingDateLength  = 18; // (10 + 8) for YYYY-MM-DD<vendor info> or (8 + 8) forYYYYMMDD<vendor info>
+    constexpr size_t kMaxDateLength               = 8;  // YYYYMMDD
+    char dateStr[kMaxManufacturingDateLength + 1] = {};
+    size_t readDateLen                            = kMaxManufacturingDateLength;
+    ReturnErrorOnFailure(
+        ESP32Config::ReadConfigValueStr(ESP32Config::kConfigKey_ManufacturingDate, dateStr, sizeof(dateStr), readDateLen));
+    VerifyOrReturnError(readDateLen >= kMaxDateLength && readDateLen <= kMaxManufacturingDateLength, CHIP_ERROR_INTERNAL);
     size_t index = 4;
     if (dateStr[index] == '-')
         index++;
@@ -70,10 +76,13 @@ inline CHIP_ERROR GetManufacturingDateOrSuffix(uint16_t * year, uint8_t * month,
         *day   = static_cast<uint8_t>(strtol(buf, nullptr, 10));
     }
 
-    if (index < dateLen && vendorSuffixSpan && vendorSuffixSpan->size() > 0)
+    if (vendorSuffixSpan)
     {
-        vendorSuffixSpan->reduce_size(dateLen - index);
-        memcpy(vendorSuffixSpan->data(), dateStr + index, dateLen - index);
+        VerifyOrReturnError(index < readDateLen, CHIP_ERROR_INTERNAL);
+        size_t suffixLen = readDateLen - index;
+        VerifyOrReturnError(suffixLen <= vendorSuffixSpan->size(), CHIP_ERROR_BUFFER_TOO_SMALL);
+        vendorSuffixSpan->reduce_size(suffixLen);
+        memcpy(vendorSuffixSpan->data(), dateStr + index, suffixLen);
     }
     return CHIP_NO_ERROR;
 }
@@ -283,12 +292,10 @@ CHIP_ERROR ESP32FactoryDataProvider::GetSerialNumber(char * buf, size_t bufSize)
 
 CHIP_ERROR ESP32FactoryDataProvider::GetManufacturingDate(uint16_t & year, uint8_t & month, uint8_t & day)
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-    err            = GetManufacturingDateOrSuffix(&year, &month, &day, nullptr);
-    ReturnErrorOnFailure(err);
-    VerifyOrReturnError(year >= 1000 && year <= 9999, CHIP_ERROR_INVALID_ARGUMENT);
-    VerifyOrReturnError(month >= 1 && month <= 12, CHIP_ERROR_INVALID_ARGUMENT);
-    VerifyOrReturnError(day >= 1 && day <= 31, CHIP_ERROR_INVALID_ARGUMENT);
+    ReturnErrorOnFailure(GetManufacturingDateOrSuffix(&year, &month, &day, nullptr));
+    VerifyOrReturnError(year >= 1000 && year <= 9999, CHIP_ERROR_INTERNAL);
+    VerifyOrReturnError(month >= 1 && month <= 12, CHIP_ERROR_INTERNAL);
+    VerifyOrReturnError(day >= 1 && day <= 31, CHIP_ERROR_INTERNAL);
     return CHIP_NO_ERROR;
 }
 

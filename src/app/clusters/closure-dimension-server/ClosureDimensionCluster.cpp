@@ -44,8 +44,7 @@ constexpr uint64_t kPositionQuietReportingInterval = 5000;
 } // namespace
 
 ClosureDimensionCluster::ClosureDimensionCluster(EndpointId endpointId, const Context & context) :
-    DefaultServerCluster({ endpointId, ClosureDimension::Id }), mDelegate(context.delegate), mTimerDelegate(context.timerDelegate),
-    mConformance(context.conformance)
+    DefaultServerCluster({ endpointId, ClosureDimension::Id }), mDelegate(context.delegate), mConformance(context.conformance)
 {
     VerifyOrDieWithMsg(context.conformance.IsValid(), AppServer, "Invalid conformance");
 

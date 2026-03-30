@@ -22,7 +22,6 @@
 #include <app/static-cluster-config/ClosureDimension.h>
 #include <data-model-providers/codegen/ClusterIntegration.h>
 #include <data-model-providers/codegen/CodegenDataModelProvider.h>
-#include <platform/DefaultTimerDelegate.h>
 
 using namespace chip;
 using namespace chip::app;
@@ -40,7 +39,6 @@ LazyRegisteredServerCluster<ClosureDimensionCluster> gServer[kClosureDimensionMa
 ClosureDimensionClusterDelegate * gDelegates[kClosureDimensionMaxClusterCount] = { nullptr };
 ClusterConformance gConformances[kClosureDimensionMaxClusterCount];
 ClusterInitParameters gInitParams[kClosureDimensionMaxClusterCount];
-DefaultTimerDelegate gTimerDelegate;
 } // namespace
 
 namespace chip {
@@ -107,8 +105,7 @@ void MatterClosureDimensionClusterInitCallback(EndpointId endpointId)
         return;
     }
 
-    ClosureDimensionCluster::Context context{ *gDelegates[endpointId], gTimerDelegate, gConformances[endpointId],
-                                              gInitParams[endpointId] };
+    ClosureDimensionCluster::Context context{ *gDelegates[endpointId], gConformances[endpointId], gInitParams[endpointId] };
     gServer[endpointId].Create(endpointId, context);
     LogErrorOnFailure(CodegenDataModelProvider::Instance().Registry().Register(gServer[endpointId].Registration()));
 }

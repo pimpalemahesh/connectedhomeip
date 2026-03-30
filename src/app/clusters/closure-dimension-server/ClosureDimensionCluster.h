@@ -27,7 +27,6 @@
 #include <app/clusters/closure-dimension-server/GenericDimensionState.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/BitFlags.h>
-#include <lib/support/TimerDelegate.h>
 #include <lib/support/logging/CHIPLogging.h>
 
 namespace chip {
@@ -133,7 +132,6 @@ public:
     struct Context
     {
         ClosureDimensionClusterDelegate & delegate;
-        TimerDelegate & timerDelegate;
         const ClusterConformance & conformance;
         const ClusterInitParameters & initParams;
     };
@@ -355,7 +353,6 @@ private:
     CHIP_ERROR SetModulationType(const ModulationTypeEnum modulationType);
 
     ClosureDimensionClusterDelegate & mDelegate;
-    TimerDelegate & mTimerDelegate;
     ClusterConformance mConformance;
     ClusterState mState;
 

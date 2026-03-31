@@ -525,69 +525,6 @@ CHIP_ERROR ClosureDimensionCluster::SetLatchControlModes(const BitFlags<LatchCon
     return CHIP_NO_ERROR;
 }
 
-DataModel::Nullable<GenericDimensionStateStruct> ClosureDimensionCluster::GetCurrentState() const
-{
-    return mState.currentState;
-}
-
-DataModel::Nullable<GenericDimensionStateStruct> ClosureDimensionCluster::GetTargetState() const
-{
-    return mState.targetState;
-}
-
-Percent100ths ClosureDimensionCluster::GetResolution() const
-{
-    return mState.resolution;
-}
-
-Percent100ths ClosureDimensionCluster::GetStepValue() const
-{
-    return mState.stepValue;
-}
-
-ClosureUnitEnum ClosureDimensionCluster::GetUnit() const
-{
-    return mState.unit;
-}
-DataModel::Nullable<Structs::UnitRangeStruct::Type> ClosureDimensionCluster::GetUnitRange() const
-{
-    return mState.unitRange;
-}
-Structs::RangePercent100thsStruct::Type ClosureDimensionCluster::GetLimitRange() const
-{
-    return mState.limitRange;
-}
-
-TranslationDirectionEnum ClosureDimensionCluster::GetTranslationDirection() const
-{
-    return mState.translationDirection;
-}
-
-RotationAxisEnum ClosureDimensionCluster::GetRotationAxis() const
-{
-    return mState.rotationAxis;
-}
-
-OverflowEnum ClosureDimensionCluster::GetOverflow() const
-{
-    return mState.overflow;
-}
-
-ModulationTypeEnum ClosureDimensionCluster::GetModulationType() const
-{
-    return mState.modulationType;
-}
-
-BitFlags<LatchControlModesBitmap> ClosureDimensionCluster::GetLatchControlModes() const
-{
-    return mState.latchControlModes;
-}
-
-BitFlags<Feature> ClosureDimensionCluster::GetFeatureMap() const
-{
-    return mConformance.FeatureMap();
-}
-
 Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> position, Optional<bool> latch,
                                                        Optional<Globals::ThreeLevelAutoEnum> speed)
 {

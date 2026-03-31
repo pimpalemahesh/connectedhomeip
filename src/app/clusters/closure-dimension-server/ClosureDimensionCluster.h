@@ -260,19 +260,19 @@ public:
     // All Get functions:
     // Return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if the attribute is not supported.
     // Otherwise return CHIP_NO_ERROR and set the input parameter value to the current cluster state value
-    DataModel::Nullable<GenericDimensionStateStruct> GetCurrentState() const;
-    DataModel::Nullable<GenericDimensionStateStruct> GetTargetState() const;
-    Percent100ths GetResolution() const;
-    Percent100ths GetStepValue() const;
-    ClosureUnitEnum GetUnit() const;
-    DataModel::Nullable<Structs::UnitRangeStruct::Type> GetUnitRange() const;
-    Structs::RangePercent100thsStruct::Type GetLimitRange() const;
-    TranslationDirectionEnum GetTranslationDirection() const;
-    RotationAxisEnum GetRotationAxis() const;
-    OverflowEnum GetOverflow() const;
-    ModulationTypeEnum GetModulationType() const;
-    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const;
-    BitFlags<Feature> GetFeatureMap() const;
+    DataModel::Nullable<GenericDimensionStateStruct> GetCurrentState() const { return mState.currentState; }
+    DataModel::Nullable<GenericDimensionStateStruct> GetTargetState() const { return mState.targetState; }
+    Percent100ths GetResolution() const { return mState.resolution; }
+    Percent100ths GetStepValue() const { return mState.stepValue; }
+    ClosureUnitEnum GetUnit() const { return mState.unit; }
+    DataModel::Nullable<Structs::UnitRangeStruct::Type> GetUnitRange() const { return mState.unitRange; }
+    Structs::RangePercent100thsStruct::Type GetLimitRange() const { return mState.limitRange; }
+    TranslationDirectionEnum GetTranslationDirection() const { return mState.translationDirection; }
+    RotationAxisEnum GetRotationAxis() const { return mState.rotationAxis; }
+    OverflowEnum GetOverflow() const { return mState.overflow; }
+    ModulationTypeEnum GetModulationType() const { return mState.modulationType; }
+    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const { return mState.latchControlModes; }
+    BitFlags<Feature> GetFeatureMap() const { return mConformance.FeatureMap(); }
 
     /**
      *  @brief Calls delegate HandleSetTarget function after validating the parameters and conformance.

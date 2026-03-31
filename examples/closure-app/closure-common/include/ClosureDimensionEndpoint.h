@@ -113,9 +113,8 @@ public:
         clusterInitParameters.rotationAxis         = RotationAxisEnum::kCenteredVertical;
         clusterInitParameters.modulationType       = ModulationTypeEnum::kVentilation;
 
-        MatterClosureDimensionSetConformance(mEndpoint, conformance);
-        MatterClosureDimensionSetInitParams(mEndpoint, clusterInitParameters);
-        MatterClosureDimensionSetDelegate(mEndpoint, mDelegate);
+        ClosureDimensionClusterContext clusterContext{ &mDelegate, &conformance, &clusterInitParameters };
+        SetStartUpParams(mEndpoint, clusterContext);
     }
 
     /**

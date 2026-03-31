@@ -25,13 +25,37 @@ namespace app {
 namespace Clusters {
 namespace ClosureDimension {
 
+/**
+ * @brief Context for the Closure Dimension cluster.
+ *
+ * @param delegate The delegate for the cluster.
+ * @param conformance The conformance for the cluster.
+ * @param initParams The init params for the cluster.
+ */
+struct ClosureDimensionClusterContext
+{
+    ClosureDimensionClusterDelegate * delegate;
+    ClusterConformance * conformance;
+    ClusterInitParameters * initParams;
+};
+
+/**
+ * @brief Get the instance of the Closure Dimension cluster.
+ * @note Cluster Instance only available after the cluster is initialized.
+ *
+ * @param endpointId The endpoint ID for the cluster.
+ * @return Pointer to the instance of the Closure Dimension cluster. nullptr if the cluster is not initialized.
+ */
 ClosureDimensionCluster * GetInstance(EndpointId endpointId);
 
-void MatterClosureDimensionSetDelegate(EndpointId endpointId, ClosureDimensionClusterDelegate & delegate);
-
-void MatterClosureDimensionSetConformance(EndpointId endpointId, const ClusterConformance & conformance);
-
-void MatterClosureDimensionSetInitParams(EndpointId endpointId, const ClusterInitParameters & initParams);
+/**
+ * @brief Set the start up params for the Closure Dimension cluster.
+ * @note This function should be called before the cluster is initialized and GetInstance() is called.
+ *
+ * @param endpointId The endpoint ID for the cluster.
+ * @param context The context for the cluster.
+ */
+void SetStartUpParams(EndpointId endpointId, const ClosureDimensionClusterContext & context);
 
 } // namespace ClosureDimension
 } // namespace Clusters

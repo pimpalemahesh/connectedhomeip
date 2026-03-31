@@ -34,12 +34,12 @@ static constexpr uint32_t kDACPublicKeySize  = 65;
  * @brief Get the manufacturing date or suffix from the ESP32 config.
  *
  * @Note: The manufacturing date is stored in the format YYYY-MM-DD<vendor info> or YYYYMMDD<vendor info>.
- * To retrive only the manufacturing date, pass nullptr for vendorSuffixSpan.
- * To retrive only the vendor suffix, pass a non-empty MutableCharSpan for vendorSuffixSpan and nullptr for year, month, and day.
+ * To retrieve only the manufacturing date, pass nullptr for vendorSuffixSpan.
+ * To retrieve only the vendor suffix, pass a non-empty MutableCharSpan for vendorSuffixSpan and nullptr for year, month, and day.
  * @param year The year to store the manufacturing date.
  * @param month The month to store the manufacturing date.
  * @param day The day to store the manufacturing date.
- * @param vendorSuffixSpan The vendor suffix to store the manufacturing date. @Note: It not gaurenteed to be null terminated and
+ * @param vendorSuffixSpan The vendor suffix to store the manufacturing date. @Note: It not guaranteed to be null terminated and
  * should be treated as a raw string.
  * @return CHIP_ERROR indicating the success or failure of the operation.
  */
@@ -67,22 +67,28 @@ inline CHIP_ERROR GetManufacturingDateOrSuffix(uint16_t * year, uint8_t * month,
         char buf[5];
         memcpy(buf, dateStr, 4);
         buf[4] = '\0';
-        *year  = static_cast<uint16_t>(strtol(buf, nullptr, 10));
+        *year  = static_cast<uint16_t>(strtoul(buf, nullptr, 10));
         memcpy(buf, dateStr + monthIdx, 2);
         buf[2] = '\0';
-        *month = static_cast<uint8_t>(strtol(buf, nullptr, 10));
+        *month = static_cast<uint8_t>(strtoul(buf, nullptr, 10));
         memcpy(buf, dateStr + dayIdx, 2);
         buf[2] = '\0';
-        *day   = static_cast<uint8_t>(strtol(buf, nullptr, 10));
+        *day   = static_cast<uint8_t>(strtoul(buf, nullptr, 10));
     }
 
     if (vendorSuffixSpan)
     {
-        VerifyOrReturnError(index < readDateLen, CHIP_ERROR_INTERNAL);
         size_t suffixLen = readDateLen - index;
-        VerifyOrReturnError(suffixLen <= vendorSuffixSpan->size(), CHIP_ERROR_BUFFER_TOO_SMALL);
-        vendorSuffixSpan->reduce_size(suffixLen);
-        memcpy(vendorSuffixSpan->data(), dateStr + index, suffixLen);
+        if (suffixLen > 0)
+        {
+            VerifyOrReturnError(suffixLen <= vendorSuffixSpan->size(), CHIP_ERROR_BUFFER_TOO_SMALL);
+            vendorSuffixSpan->reduce_size(suffixLen);
+            memcpy(vendorSuffixSpan->data(), dateStr + index, suffixLen);
+        }
+        else
+        {
+            vendorSuffixSpan->reduce_size(0);
+        }
     }
     return CHIP_NO_ERROR;
 }
@@ -293,9 +299,12 @@ CHIP_ERROR ESP32FactoryDataProvider::GetSerialNumber(char * buf, size_t bufSize)
 CHIP_ERROR ESP32FactoryDataProvider::GetManufacturingDate(uint16_t & year, uint8_t & month, uint8_t & day)
 {
     ReturnErrorOnFailure(GetManufacturingDateOrSuffix(&year, &month, &day, nullptr));
-    VerifyOrReturnError(year >= 1000 && year <= 9999, CHIP_ERROR_INTERNAL);
-    VerifyOrReturnError(month >= 1 && month <= 12, CHIP_ERROR_INTERNAL);
-    VerifyOrReturnError(day >= 1 && day <= 31, CHIP_ERROR_INTERNAL);
+    VerifyOrReturnError(year >= 1000 && year <= 9999, CHIP_ERROR_INTERNAL,
+                        ChipLogError(AppServer, "Year %d is not in the range of 1000-9999", year));
+    VerifyOrReturnError(month >= 1 && month <= 12, CHIP_ERROR_INTERNAL,
+                        ChipLogError(AppServer, "Month %d is not in the range of 1-12", month));
+    VerifyOrReturnError(day >= 1 && day <= 31, CHIP_ERROR_INTERNAL,
+                        ChipLogError(AppServer, "Day %d is not in the range of 1-31", day));
     return CHIP_NO_ERROR;
 }
 

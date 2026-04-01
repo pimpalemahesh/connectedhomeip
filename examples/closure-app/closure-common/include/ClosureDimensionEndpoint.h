@@ -97,33 +97,12 @@ private:
 class ClosureDimensionEndpoint
 {
 public:
-    ClosureDimensionEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(mEndpoint), mClusterInstance(nullptr)
-    {
-        ClusterConformance conformance;
-        conformance.FeatureMap()
-            .Set(Feature::kPositioning)
-            .Set(Feature::kMotionLatching)
-            .Set(Feature::kUnit)
-            .Set(Feature::kLimitation)
-            .Set(Feature::kSpeed)
-            .Set(Feature::kRotation);
-
-        ClusterInitParameters clusterInitParameters;
-        clusterInitParameters.translationDirection = TranslationDirectionEnum::kDownward;
-        clusterInitParameters.rotationAxis         = RotationAxisEnum::kCenteredVertical;
-        clusterInitParameters.modulationType       = ModulationTypeEnum::kVentilation;
-
-        ClosureDimensionClusterContext clusterContext{ &mDelegate, &conformance, &clusterInitParameters };
-        SetStartUpParams(mEndpoint, clusterContext);
-    }
+    ClosureDimensionEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(mEndpoint), mInterface(endpoint, mDelegate) {}
 
     /**
      * @brief Initializes the ClosureDimensionEndpoint instance.
      *
-     * It initializes the Cluster Instance for the Closure Dimension Endpoint and sets the same instance to the delegate.
-     *
-     * @return CHIP_ERROR_INTERNAL if the Closure Dimension Cluster is not Initialized
-     *         CHIP_NO_ERROR in case of success
+     * @return CHIP_ERROR indicating the result of the initialization.
      */
     CHIP_ERROR Init();
 
@@ -139,7 +118,7 @@ public:
      *
      * @return Reference to the ClosureDimensionCluster instance.
      */
-    ClosureDimensionCluster & GetClusterInstance() { return *mClusterInstance; }
+    ClosureDimensionCluster & GetClusterInstance() { return mInterface.GetClusterInstance(); }
 
     /**
      * @brief Handles the completion of a stop motion action.
@@ -198,7 +177,7 @@ public:
 private:
     EndpointId mEndpoint = kInvalidEndpointId;
     ClosureDimensionDelegate mDelegate;
-    ClosureDimensionCluster * mClusterInstance = nullptr;
+    Interface mInterface;
 
     /**
      * @brief Updates the current state of the closure dimension endpoint from the target state.

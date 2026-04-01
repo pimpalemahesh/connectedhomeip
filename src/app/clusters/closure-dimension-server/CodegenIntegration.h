@@ -20,43 +20,31 @@
 #include <app/clusters/closure-dimension-server/ClosureDimensionCluster.h>
 #include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
 
+#include <app/server-cluster/ServerClusterInterfaceRegistry.h>
+
 namespace chip {
 namespace app {
 namespace Clusters {
 namespace ClosureDimension {
 
-/**
- * @brief Context for the Closure Dimension cluster.
- *
- * @param delegate The delegate for the cluster.
- * @param conformance The conformance for the cluster.
- * @param initParams The init params for the cluster.
- */
-struct ClosureDimensionClusterContext
+class Interface
 {
-    ClosureDimensionClusterDelegate * delegate;
-    ClusterConformance * conformance;
-    ClusterInitParameters * initParams;
+public:
+    Interface(EndpointId endpoint, ClosureDimensionClusterDelegate & delegate);
+    ~Interface() = default;
+
+    CHIP_ERROR Init(ClusterConformance & conformance, ClusterInitParameters & initParams);
+
+    CHIP_ERROR Shutdown();
+
+    ClosureDimensionCluster & GetClusterInstance();
+
+private:
+    EndpointId mEndpoint;
+    ClosureDimensionClusterDelegate & mDelegate;
+    // The Code Driven Closure Dimension Cluster instance (lazy-initialized)
+    chip::app::LazyRegisteredServerCluster<ClosureDimensionCluster> mCluster;
 };
-
-/**
- * @brief Get the instance of the Closure Dimension cluster.
- * @note Cluster Instance only available after the cluster is initialized.
- *
- * @param endpointId The endpoint ID for the cluster.
- * @return Pointer to the instance of the Closure Dimension cluster. nullptr if the cluster is not initialized.
- */
-ClosureDimensionCluster * GetInstance(EndpointId endpointId);
-
-/**
- * @brief Set the start up params for the Closure Dimension cluster.
- * @note This function should be called before the cluster is initialized and GetInstance() is called.
- *
- * @param endpointId The endpoint ID for the cluster.
- * @param context The context for the cluster.
- */
-void SetStartUpParams(EndpointId endpointId, const ClosureDimensionClusterContext & context);
-
 } // namespace ClosureDimension
 } // namespace Clusters
 } // namespace app

@@ -19,7 +19,6 @@
 #include "CodegenIntegration.h"
 #include <app/clusters/closure-dimension-server/ClosureDimensionCluster.h>
 #include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
-#include <app/static-cluster-config/ClosureDimension.h>
 #include <data-model-providers/codegen/ClusterIntegration.h>
 
 #include <app/util/attribute-storage.h>
@@ -32,36 +31,30 @@ using namespace chip::app::Clusters::ClosureDimension;
 using namespace chip::app::Clusters::ClosureDimension::Attributes;
 using namespace chip::Protocols::InteractionModel;
 
-namespace {
-
-constexpr size_t kClosureDimensionFixedClusterCount = ClosureDimension::StaticApplicationConfig::kFixedClusterConfig.size();
-constexpr size_t kClosureDimensionMaxClusterCount = kClosureDimensionFixedClusterCount + CHIP_DEVICE_CONFIG_DYNAMIC_ENDPOINT_COUNT;
-
-LazyRegisteredServerCluster<ClosureDimensionCluster> gServer[kClosureDimensionMaxClusterCount];
-ClosureDimensionClusterContext clusterContexts[kClosureDimensionMaxClusterCount];
-} // namespace
-
 namespace chip {
 namespace app {
 namespace Clusters {
 namespace ClosureDimension {
 
-ClosureDimensionCluster * GetInstance(EndpointId endpointId)
+Interface::Interface(EndpointId endpoint, ClosureDimensionClusterDelegate & delegate) : mEndpoint(endpoint), mDelegate(delegate) {}
+
+CHIP_ERROR Interface::Init(ClusterConformance & conformance, ClusterInitParameters & initParams)
 {
-    if (gServer[endpointId].IsConstructed())
-    {
-        return &gServer[endpointId].Cluster();
-    }
-    ChipLogError(Zcl, "Closure Dimension Cluster not initialized on endpoint %u.", endpointId);
-    return nullptr;
+    ClosureDimensionCluster::Context context{ mDelegate, conformance, initParams };
+    mCluster.Create(mEndpoint, context);
+    return CodegenDataModelProvider::Instance().Registry().Register(mCluster.Registration());
 }
 
-void SetStartUpParams(EndpointId endpointId, const ClosureDimensionClusterContext & context)
+CHIP_ERROR Interface::Shutdown()
 {
-    VerifyOrReturn(
-        !gServer[endpointId].IsConstructed(),
-        ChipLogError(Zcl, "Closure Dimension Cluster already initialized. Cannot set start up params on endpoint %u.", endpointId));
-    clusterContexts[endpointId] = context;
+    VerifyOrDie(mCluster.IsConstructed());
+    return CodegenDataModelProvider::Instance().Registry().Unregister(&mCluster.Cluster());
+}
+
+ClosureDimensionCluster & Interface::GetClusterInstance()
+{
+    VerifyOrDie(mCluster.IsConstructed());
+    return mCluster.Cluster();
 }
 
 } // namespace ClosureDimension
@@ -69,47 +62,9 @@ void SetStartUpParams(EndpointId endpointId, const ClosureDimensionClusterContex
 } // namespace app
 } // namespace chip
 
-void MatterClosureDimensionClusterInitCallback(EndpointId endpointId)
-{
-    uint16_t clusterInstanceIndex =
-        emberAfGetClusterServerEndpointIndex(endpointId, ClosureDimension::Id, kClosureDimensionFixedClusterCount);
-    if (clusterInstanceIndex >= kClosureDimensionMaxClusterCount)
-    {
-        ChipLogError(Zcl, "Closure Dimension Cluster cannot be initialized on endpoint %u. Cluster instance index is out of range.",
-                     endpointId);
-        return;
-    }
+void MatterClosureDimensionClusterInitCallback(EndpointId endpointId) {}
 
-    if (gServer[endpointId].IsConstructed())
-    {
-        ChipLogError(Zcl, "Closure Dimension Cluster already initialized. Ignoring duplicate initialization.");
-        return;
-    }
-
-    ClosureDimensionClusterContext context = clusterContexts[endpointId];
-    if (context.delegate == nullptr || context.conformance == nullptr || context.initParams == nullptr)
-    {
-        ChipLogError(Zcl, "Closure Dimension Cluster context not set. Cannot initialize cluster on endpoint %u.", endpointId);
-        return;
-    }
-
-    ClosureDimensionCluster::Context clusterContext{ *context.delegate, *context.conformance, *context.initParams };
-
-    gServer[endpointId].Create(endpointId, clusterContext);
-    LogErrorOnFailure(CodegenDataModelProvider::Instance().Registry().Register(gServer[endpointId].Registration()));
-}
-
-void MatterClosureDimensionClusterShutdownCallback(EndpointId endpointId, MatterClusterShutdownType shutdownType)
-{
-    if (!gServer[endpointId].IsConstructed())
-    {
-        ChipLogError(Zcl, "Closure Dimension Cluster not initialized. Ignoring shutdown.");
-        return;
-    }
-
-    LogErrorOnFailure(CodegenDataModelProvider::Instance().Registry().Unregister(&gServer[endpointId].Cluster()));
-    gServer[endpointId].Destroy();
-}
+void MatterClosureDimensionClusterShutdownCallback(EndpointId endpointId, MatterClusterShutdownType shutdownType) {}
 // -----------------------------------------------------------------------------
 // Plugin initialization
 

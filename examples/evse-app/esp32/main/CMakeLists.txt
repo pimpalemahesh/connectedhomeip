@@ -47,12 +47,6 @@ set(SRC_DIRS_LIST
   "${CHIP_ROOT}/examples/platform/esp32/shell_extension"
 )
 
-if (CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED)
-    list(APPEND PRIV_INCLUDE_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
-    list(APPEND SRC_DIRS_LIST "${CHIP_ROOT}/examples/platform/esp32/diagnostics/insights/")
-endif()
-
-
 idf_component_register(PRIV_INCLUDE_DIRS ${PRIV_INCLUDE_DIRS_LIST}
   SRC_DIRS ${SRC_DIRS_LIST})
 
@@ -60,10 +54,6 @@ include(${CHIP_ROOT}/src/app/chip_data_model.cmake)
 chip_configure_data_model(${COMPONENT_LIB}
     ZAP_FILE ${EVSE_COMMON_DIR}/evse-app.zap
 )
-
-if(CONFIG_ESP_INSIGHTS_ENABLED AND CONFIG_ESP_DIAGNOSTICS_ENABLED)
-  target_add_binary_data(${COMPONENT_TARGET} "insights_auth_key.txt" TEXT)
-endif()
 
 target_compile_options(${COMPONENT_LIB} PRIVATE "-DCHIP_HAVE_CONFIG_H")
 target_compile_options(${COMPONENT_LIB} PUBLIC

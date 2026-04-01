@@ -120,8 +120,8 @@ CodeDrivenClusters:
     - Camera AV Stream Management
     - Chime
     - Closure Control
-    - Commissioner Control
     - Closure Dimension
+    - Commissioner Control
     - Descriptor
     - Device Energy Management
     - Diagnostic Logs

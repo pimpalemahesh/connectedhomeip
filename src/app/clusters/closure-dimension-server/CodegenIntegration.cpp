@@ -19,7 +19,7 @@
 #include "CodegenIntegration.h"
 #include <app/clusters/closure-dimension-server/ClosureDimensionCluster.h>
 #include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
-#include <data-model-providers/codegen/ClusterIntegration.h>
+#include <clusters/ClosureDimension/Metadata.h>
 
 #include <app/util/attribute-storage.h>
 #include <data-model-providers/codegen/CodegenDataModelProvider.h>
@@ -29,7 +29,6 @@ using namespace chip::app;
 using namespace chip::app::Clusters;
 using namespace chip::app::Clusters::ClosureDimension;
 using namespace chip::app::Clusters::ClosureDimension::Attributes;
-using namespace chip::Protocols::InteractionModel;
 
 namespace chip {
 namespace app {
@@ -40,7 +39,14 @@ Interface::Interface(EndpointId endpoint, ClosureDimensionClusterDelegate & dele
 
 CHIP_ERROR Interface::Init(ClusterConformance & conformance, ClusterInitParameters & initParams)
 {
-    ClosureDimensionCluster::Context context{ mDelegate, conformance, initParams };
+    mConformance = conformance;
+    mInitParams = initParams;
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR Interface::Init()
+{
+    ClosureDimensionCluster::Context context{ mDelegate, mConformance, mInitParams };
     mCluster.Create(mEndpoint, context);
     return CodegenDataModelProvider::Instance().Registry().Register(mCluster.Registration());
 }
@@ -51,12 +57,143 @@ CHIP_ERROR Interface::Shutdown()
     return CodegenDataModelProvider::Instance().Registry().Unregister(&mCluster.Cluster());
 }
 
-ClosureDimensionCluster & Interface::GetClusterInstance()
+CHIP_ERROR Interface::SetCurrentState(const DataModel::Nullable<GenericDimensionStateStruct> & currentState)
 {
-    VerifyOrDie(mCluster.IsConstructed());
-    return mCluster.Cluster();
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetCurrentState(currentState);
+}
+CHIP_ERROR Interface::SetTargetState(const DataModel::Nullable<GenericDimensionStateStruct> & targetState)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetTargetState(targetState);
 }
 
+CHIP_ERROR Interface::SetResolution(const Percent100ths resolution)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetResolution(resolution);
+}
+
+CHIP_ERROR Interface::SetStepValue(const Percent100ths stepValue)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetStepValue(stepValue);
+}
+
+CHIP_ERROR Interface::SetUnit(const ClosureUnitEnum unit)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetUnit(unit);
+}
+CHIP_ERROR Interface::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetUnitRange(unitRange);
+}
+CHIP_ERROR Interface::SetLimitRange(const Structs::RangePercent100thsStruct::Type & limitRange)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetLimitRange(limitRange);
+}
+CHIP_ERROR Interface::SetOverflow(const OverflowEnum overflow)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetOverflow(overflow);
+}
+
+CHIP_ERROR Interface::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    return mCluster.Cluster().SetLatchControlModes(latchControlModes);
+}
+CHIP_ERROR Interface::GetCurrentState(DataModel::Nullable<GenericDimensionStateStruct> & currentState)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    currentState = mCluster.Cluster().GetCurrentState();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetTargetState(DataModel::Nullable<GenericDimensionStateStruct> & targetState)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    targetState = mCluster.Cluster().GetTargetState();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetResolution(Percent100ths & resolution)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    resolution = mCluster.Cluster().GetResolution();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetStepValue(Percent100ths & stepValue)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    stepValue = mCluster.Cluster().GetStepValue();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetUnit(ClosureUnitEnum & unit)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    unit = mCluster.Cluster().GetUnit();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetUnitRange(DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    unitRange = mCluster.Cluster().GetUnitRange();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetLimitRange(Structs::RangePercent100thsStruct::Type & limitRange)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    limitRange = mCluster.Cluster().GetLimitRange();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetTranslationDirection(TranslationDirectionEnum & translationDirection)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    translationDirection = mCluster.Cluster().GetTranslationDirection();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetRotationAxis(RotationAxisEnum & rotationAxis)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    rotationAxis = mCluster.Cluster().GetRotationAxis();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetOverflow(OverflowEnum & overflow)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    overflow = mCluster.Cluster().GetOverflow();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetModulationType(ModulationTypeEnum & modulationType)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    modulationType = mCluster.Cluster().GetModulationType();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetLatchControlModes(BitFlags<LatchControlModesBitmap> & latchControlModes)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    latchControlModes = mCluster.Cluster().GetLatchControlModes();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetFeatureMap(BitFlags<Feature> & featureMap)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    featureMap = mCluster.Cluster().GetFeatureMap();
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR Interface::GetClusterRevision(Attributes::ClusterRevision::TypeInfo::Type & clusterRevision)
+{
+    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
+    clusterRevision = kRevision;
+    return CHIP_NO_ERROR;
+}
+ClusterConformance & Interface::GetConformance()
+{
+    return mConformance;
+}
 } // namespace ClosureDimension
 } // namespace Clusters
 } // namespace app

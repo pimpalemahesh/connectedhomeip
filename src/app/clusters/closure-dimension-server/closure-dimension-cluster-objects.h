@@ -18,15 +18,4 @@
 
 #pragma once
 
-#include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
-
-namespace chip {
-namespace app {
-namespace Clusters {
-namespace ClosureDimension {
-
-using DelegateBase = ClosureDimensionClusterDelegate;
-} // namespace ClosureDimension
-} // namespace Clusters
-} // namespace app
-} // namespace chip
+#include <app/clusters/closure-dimension-server/GenericDimensionState.h>

@@ -16,15 +16,11 @@
  *
  */
 #pragma once
-#include <app/server-cluster/DefaultServerCluster.h>
-#include <app/server-cluster/OptionalAttributeSet.h>
-#include <clusters/ClosureControl/Attributes.h>
-#include <clusters/ClosureControl/Commands.h>
-#include <clusters/ClosureControl/Metadata.h>
-
 #include <app/cluster-building-blocks/QuieterReporting.h>
 #include <app/clusters/closure-dimension-server/ClosureDimensionClusterDelegate.h>
 #include <app/clusters/closure-dimension-server/GenericDimensionState.h>
+#include <app/server-cluster/DefaultServerCluster.h>
+#include <app/server-cluster/OptionalAttributeSet.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/BitFlags.h>
 #include <lib/support/logging/CHIPLogging.h>

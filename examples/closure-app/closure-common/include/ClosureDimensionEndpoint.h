@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <app/clusters/closure-dimension-server/closure-dimension-cluster-objects.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-delegate.h>
 #include <app/clusters/closure-dimension-server/closure-dimension-server.h>
 
@@ -41,7 +42,7 @@ using Protocols::InteractionModel::Status;
  * according to specific business logic. It is designed to be used as a delegate for the Closure Dimension cluster.
  *
  */
-class ClosureDimensionDelegate : public ClosureDimensionClusterDelegate
+class ClosureDimensionDelegate : public DelegateBase
 {
 public:
     ClosureDimensionDelegate(EndpointId endpoint) : mEndpoint(endpoint) {}
@@ -69,17 +70,9 @@ public:
      */
     void SetStepCommandTargetDirection(StepDirectionEnum direction) { mStepCommandTargetDirection = direction; }
 
-    /**
-     * @brief Function to set the cluster instance.
-     */
-    void SetClusterInstance(ClosureDimensionCluster * clusterInstance) { mClusterInstance = clusterInstance; }
-
-    ClosureDimensionCluster & GetClusterInstance() { return *mClusterInstance; }
-
 private:
     EndpointId mEndpoint                          = kInvalidEndpointId;
     StepDirectionEnum mStepCommandTargetDirection = StepDirectionEnum::kUnknownEnumValue;
-    ClosureDimensionCluster * mClusterInstance    = nullptr;
 };
 
 /**
@@ -97,7 +90,7 @@ private:
 class ClosureDimensionEndpoint
 {
 public:
-    ClosureDimensionEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(mEndpoint), mInterface(endpoint, mDelegate) {}
+    ClosureDimensionEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(mEndpoint), mInterface(mEndpoint, mDelegate) {}
 
     /**
      * @brief Initializes the ClosureDimensionEndpoint instance.
@@ -116,9 +109,9 @@ public:
     /**
      * @brief Retrieves the cluster instance associated with this Closure Dimension endpoint.
      *
-     * @return Reference to the ClosureDimensionCluster instance.
+     * @return Reference to the Interface instance.
      */
-    ClosureDimensionCluster & GetClusterInstance() { return mInterface.GetClusterInstance(); }
+    Interface & GetClusterInstance() { return mInterface; }
 
     /**
      * @brief Handles the completion of a stop motion action.

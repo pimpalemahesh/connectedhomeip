@@ -163,7 +163,7 @@ void ESP32Diagnostics::TraceCounter(const char * label)
 }
 #endif // CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED
 
-#ifdef CONFIG_ESP_DIAGNOSTIC_TRACES_ENABLED
+#ifdef CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES
 void ESP32Diagnostics::TraceBegin(const char * label, const char * group)
 {
     VerifyOrReturn(IsEnabled(group));
@@ -177,7 +177,7 @@ void ESP32Diagnostics::TraceInstant(const char * label, const char * value)
     VerifyOrReturn(IsEnabled(value));
     ReturnOnFailure(StoreDiagnostics(label, value));
 }
-#endif // CONFIG_ESP_DIAGNOSTIC_TRACES_ENABLED
+#endif // CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES
 
 CHIP_ERROR ESP32Diagnostics::StoreDiagnostics(const char * label, const char * group)
 {

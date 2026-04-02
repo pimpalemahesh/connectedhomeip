@@ -892,31 +892,31 @@ menu "CHIP Device Layer"
     endmenu
 
     menu "Diagnostics Options"
-        config ESP_DIAGNOSTICS_ENABLED
+        config CHIP_ENABLE_ESP_DIAGNOSTICS
             bool "Enable ESP Platform Diagnostics for Matter"
             default n
             help
                 Enables the ESP Diagnostics platform to collect, store, and retrieve diagnostic data for the Matter protocol.
                 This feature helps monitor system health and performance by providing insights through diagnostics logs.
 
-        config ESP_DIAGNOSTIC_TRACES_ENABLED
+        config CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES
             bool "Enable Traces"
             default y
-            depends on ESP_DIAGNOSTICS_ENABLED
+            depends on CHIP_ENABLE_ESP_DIAGNOSTICS
             help
                 Enable Traces for the ESP Platform Diagnostics for Matter.
 
-        config ESP_DIAGNOSTICS_METRICS_ENABLED
+        config CHIP_ENABLE_ESP_DIAGNOSTIC_METRICS
             bool "Enable Metrics"
             default y
-            depends on ESP_DIAGNOSTICS_ENABLED
+            depends on CHIP_ENABLE_ESP_DIAGNOSTICS
             help
                 Enable Metrics for the ESP Platform Diagnostics for Matter.
 
         config MAX_PERMIT_LIST_SIZE
             int "Set permit list size for Insights traces"
             range 5 30
-            depends on ESP_DIAGNOSTICS_ENABLED
+            depends on CHIP_ENABLE_ESP_DIAGNOSTICS
             default 20
             help
                 Set the maximum number of group entries that can be included in the permit list for reporting

@@ -48,7 +48,7 @@ Open menuconfig
  idf.py menuconfig
 ```
 
-Enable `ESP_DIAGNOSTICS_ENABLED` option from menuconfig
+Enable `CHIP_ENABLE_ESP_DIAGNOSTICS` option from menuconfig
 
 Set diagnostic storage buffer size from `Platform Diagnostics` menu
 

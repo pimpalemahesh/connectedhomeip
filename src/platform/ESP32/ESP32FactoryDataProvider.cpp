@@ -45,7 +45,7 @@ static constexpr uint32_t kDACPublicKeySize  = 65;
  */
 inline CHIP_ERROR GetManufacturingDateOrSuffix(uint16_t * year, uint8_t * month, uint8_t * day, MutableCharSpan * vendorSuffixSpan)
 {
-    constexpr size_t kMaxManufacturingDateLength  = 18; // (10 + 8) for YYYY-MM-DD<vendor info> or (8 + 8) forYYYYMMDD<vendor info>
+    constexpr size_t kMaxManufacturingDateLength  = 18; // (10 + 8) for YYYY-MM-DD<vendor info> or (8 + 8) for YYYYMMDD<vendor info>
     constexpr size_t kMaxDateLength               = 8;  // YYYYMMDD
     char dateStr[kMaxManufacturingDateLength + 1] = {};
     size_t readDateLen                            = kMaxManufacturingDateLength;
@@ -298,19 +298,11 @@ CHIP_ERROR ESP32FactoryDataProvider::GetSerialNumber(char * buf, size_t bufSize)
 
 CHIP_ERROR ESP32FactoryDataProvider::GetManufacturingDate(uint16_t & year, uint8_t & month, uint8_t & day)
 {
-    ReturnErrorOnFailure(GetManufacturingDateOrSuffix(&year, &month, &day, nullptr));
-    VerifyOrReturnError(year >= 1000 && year <= 9999, CHIP_ERROR_INTERNAL,
-                        ChipLogError(AppServer, "Year %d is not in the range of 1000-9999", year));
-    VerifyOrReturnError(month >= 1 && month <= 12, CHIP_ERROR_INTERNAL,
-                        ChipLogError(AppServer, "Month %d is not in the range of 1-12", month));
-    VerifyOrReturnError(day >= 1 && day <= 31, CHIP_ERROR_INTERNAL,
-                        ChipLogError(AppServer, "Day %d is not in the range of 1-31", day));
-    return CHIP_NO_ERROR;
+    return GetManufacturingDateOrSuffix(&year, &month, &day, nullptr);
 }
 
 CHIP_ERROR ESP32FactoryDataProvider::GetManufacturingDateSuffix(MutableCharSpan & vendorInfoSpan)
 {
-    VerifyOrReturnError(!vendorInfoSpan.empty(), CHIP_ERROR_BUFFER_TOO_SMALL);
     return GetManufacturingDateOrSuffix(nullptr, nullptr, nullptr, &vendorInfoSpan);
 }
 

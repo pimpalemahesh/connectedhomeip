@@ -165,7 +165,6 @@ public:
     CHIP_ERROR GetClusterRevision(Attributes::ClusterRevision::TypeInfo::Type & clusterRevision);
     ClusterConformance & GetConformance();
 
-
 private:
     EndpointId mEndpoint;
     ClosureDimensionClusterDelegate & mDelegate;

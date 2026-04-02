@@ -114,44 +114,13 @@ For new applications using the code-driven cluster pattern:
 2. **After Startup:**
     - All getter/setter methods are safe to use via Cluster Instance
 
-### Legacy API Usage
+Legacy API Usage
 
-Legacy `Interface` and `ClusterLogic` classes are removed and instead simplified
-through `ClusterIntegration` For backwards compatibility with applications using
-the legacy ZAP-generated patterns:
+The legacy classes `ClusterLogic` and `MatterContext` have been removed and are
+no longer required in the newer implementation.
 
-1. **Before Server Startup:**
-
-    ```cpp
-    #include "app/clusters/closure-dimension-server/CodegenIntegration.h"
-
-    // Set startup context (must be called before server starts)
-    chip::app::Clusters::ClosureDimension::ClosureDimensionClusterContext context{
-        .delegate    = &delegate,
-        .conformance = &conformance,
-        .initParams  = &initParams,
-    };
-    chip::app::Clusters::ClosureDimension::SetStartUpParams(endpointId, context);
-    ```
-
-    The headers `closure-dimension-server.h` and `closure-dimension-delegate.h`
-    remain valid shims; they include `CodegenIntegration.h` and
-    `ClosureDimensionClusterDelegate.h` respectively.
-
-2. **After Startup:**
-    ```cpp
-    // Access cluster instance
-    chip::app::Clusters::ClosureDimension::ClosureDimensionCluster * cluster =
-        chip::app::Clusters::ClosureDimension::GetInstance(endpointId);
-    // Use cluster methods...
-    ```
-
-**Critical:** For legacy usage, ensure `SetStartUpParams()` is called **before**
-`ServerInit()`. The `GetInstance()` should be called after the Server Created.
-The cluster instance **must not** be used before `ServerInit()` is called.
-Accessing the cluster before initialization (e.g., wrong app init order) may
-result in reading uninitialized state. Ensure your application initialization
-order is correct.
+Other APIs are retained for backward compatibility and remain accessible through
+the legacy Interface class through `CodegenIntegration.h`
 
 ## Conformance Validation
 

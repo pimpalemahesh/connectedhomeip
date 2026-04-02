@@ -40,7 +40,7 @@ Interface::Interface(EndpointId endpoint, ClosureDimensionClusterDelegate & dele
 CHIP_ERROR Interface::Init(ClusterConformance & conformance, ClusterInitParameters & initParams)
 {
     mConformance = conformance;
-    mInitParams = initParams;
+    mInitParams  = initParams;
     return CHIP_NO_ERROR;
 }
 

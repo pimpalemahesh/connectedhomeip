@@ -119,51 +119,36 @@ DataModel::ActionReturnStatus ClosureDimensionCluster::ReadAttribute(const DataM
 {
     switch (request.path.mAttributeId)
     {
-    case Attributes::CurrentState::Id: {
+    case Attributes::CurrentState::Id:
         return encoder.Encode(GetCurrentState());
-    }
-    case Attributes::TargetState::Id: {
+    case Attributes::TargetState::Id:
         return encoder.Encode(GetTargetState());
-    }
-    case Attributes::Resolution::Id: {
+    case Attributes::Resolution::Id:
         return encoder.Encode(GetResolution());
-    }
-    case Attributes::StepValue::Id: {
+    case Attributes::StepValue::Id:
         return encoder.Encode(GetStepValue());
-    }
-    case Attributes::Unit::Id: {
+    case Attributes::Unit::Id:
         return encoder.Encode(GetUnit());
-    }
-    case Attributes::UnitRange::Id: {
+    case Attributes::UnitRange::Id:
         return encoder.Encode(GetUnitRange());
-    }
-    case Attributes::LimitRange::Id: {
+    case Attributes::LimitRange::Id:
         return encoder.Encode(GetLimitRange());
-    }
-    case Attributes::TranslationDirection::Id: {
+    case Attributes::TranslationDirection::Id:
         return encoder.Encode(GetTranslationDirection());
-    }
-    case Attributes::RotationAxis::Id: {
+    case Attributes::RotationAxis::Id:
         return encoder.Encode(GetRotationAxis());
-    }
-    case Attributes::Overflow::Id: {
+    case Attributes::Overflow::Id:
         return encoder.Encode(GetOverflow());
-    }
-    case Attributes::ModulationType::Id: {
+    case Attributes::ModulationType::Id:
         return encoder.Encode(GetModulationType());
-    }
-    case Attributes::LatchControlModes::Id: {
+    case Attributes::LatchControlModes::Id:
         return encoder.Encode(GetLatchControlModes());
-    }
-    case Attributes::FeatureMap::Id: {
+    case Attributes::FeatureMap::Id:
         return encoder.Encode(GetFeatureMap());
-    }
-    case Attributes::ClusterRevision::Id: {
+    case Attributes::ClusterRevision::Id:
         return encoder.Encode(kRevision);
-    }
     default:
         return Status::UnsupportedAttribute;
-    }
 }
 
 std::optional<DataModel::ActionReturnStatus> ClosureDimensionCluster::InvokeCommand(const DataModel::InvokeRequest & request,

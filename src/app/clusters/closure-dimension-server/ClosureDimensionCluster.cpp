@@ -149,6 +149,7 @@ DataModel::ActionReturnStatus ClosureDimensionCluster::ReadAttribute(const DataM
         return encoder.Encode(kRevision);
     default:
         return Status::UnsupportedAttribute;
+    }
 }
 
 std::optional<DataModel::ActionReturnStatus> ClosureDimensionCluster::InvokeCommand(const DataModel::InvokeRequest & request,

@@ -418,6 +418,14 @@ CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Struc
         return CHIP_NO_ERROR;
     }
 
+    // If both the mState unitRange and unitRange are not null, we need to update mState unitRange if the values are different
+    if ((unitRange.Value().min != mState.unitRange.Value().min) || (unitRange.Value().max != mState.unitRange.Value().max))
+    {
+        mState.unitRange.Value().min = unitRange.Value().min;
+        mState.unitRange.Value().max = unitRange.Value().max;
+        NotifyAttributeChanged(Attributes::UnitRange::Id);
+    }
+
     return CHIP_NO_ERROR;
 }
 

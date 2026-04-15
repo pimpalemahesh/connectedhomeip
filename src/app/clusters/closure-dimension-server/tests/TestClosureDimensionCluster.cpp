@@ -26,6 +26,7 @@
 #include <app/server-cluster/testing/TestServerClusterContext.h>
 #include <app/server-cluster/testing/ValidateGlobalAttributes.h>
 #include <clusters/ClosureDimension/Attributes.h>
+#include <clusters/ClosureDimension/Commands.h>
 #include <clusters/ClosureDimension/Metadata.h>
 #include <lib/support/CHIPMem.h>
 #include <platform/CHIPDeviceLayer.h>
@@ -373,13 +374,15 @@ TEST_F(TestClosureDimensionCluster, TestModulationTypeInit)
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetNoArguments)
 {
-    EXPECT_EQ(mCluster.HandleSetTargetCommand(NullOptional, NullOptional, NullOptional), Status::InvalidCommand);
+    ClosureDimension::Commands::SetTarget::Type request;
+    EXPECT_EQ(mClusterTester.Invoke(request).status, Status::InvalidCommand);
 }
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetSuccess)
 {
-    EXPECT_EQ(mCluster.HandleSetTargetCommand(Optional(static_cast<Percent100ths>(5200)), NullOptional, NullOptional),
-              Status::Success);
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.position.SetValue(static_cast<Percent100ths>(5200));
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
     EXPECT_EQ(mockDelegate.setTargetCalls, 1);
     DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
     EXPECT_FALSE(ts.IsNull());
@@ -388,15 +391,17 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetSuccess)
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetConstraintError)
 {
-    EXPECT_EQ(mCluster.HandleSetTargetCommand(Optional(static_cast<Percent100ths>(10001)), NullOptional, NullOptional),
-              Status::ConstraintError);
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.position.SetValue(static_cast<Percent100ths>(10001));
+    EXPECT_EQ(mClusterTester.Invoke(request).status, Status::ConstraintError);
 }
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetDelegateFailure)
 {
     mockDelegate.setTargetStatus = Status::Busy;
-    EXPECT_EQ(mCluster.HandleSetTargetCommand(Optional(static_cast<Percent100ths>(5300)), NullOptional, NullOptional),
-              Status::Failure);
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.position.SetValue(static_cast<Percent100ths>(5300));
+    EXPECT_EQ(mClusterTester.Invoke(request).status, Status::Failure);
 }
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetInvalidInStateWhenLatched)
@@ -405,7 +410,8 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetInvalidInStateWhenLatched
     latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
     ClosureDimensionCluster cluster(kTestEndpointId,
                                     ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
-    ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
     BitFlags<LatchControlModesBitmap> modes;
@@ -414,10 +420,14 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetInvalidInStateWhenLatched
 
     ASSERT_EQ(cluster.SetCurrentState(PositionLatchSpeedState(5000, true, NullOptional)), CHIP_NO_ERROR);
 
-    EXPECT_EQ(cluster.HandleSetTargetCommand(Optional(static_cast<Percent100ths>(4000)), NullOptional, NullOptional),
-              Status::InvalidInState);
-    EXPECT_EQ(cluster.HandleSetTargetCommand(Optional(static_cast<Percent100ths>(4000)), Optional(false), NullOptional),
-              Status::Success);
+    ClosureDimension::Commands::SetTarget::Type requestWithoutLatch;
+    requestWithoutLatch.position.SetValue(static_cast<Percent100ths>(4000));
+    EXPECT_EQ(tester.Invoke(requestWithoutLatch).status, Status::InvalidInState);
+
+    ClosureDimension::Commands::SetTarget::Type requestWithLatchFalse;
+    requestWithLatchFalse.position.SetValue(static_cast<Percent100ths>(4000));
+    requestWithLatchFalse.latch.SetValue(false);
+    EXPECT_TRUE(tester.Invoke(requestWithLatchFalse).IsSuccess());
 
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
 }
@@ -427,20 +437,38 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepUnsupportedWithoutPositioning)
     MockClusterConformance latchOnly;
     latchOnly.FeatureMap().ClearAll().Set(Feature::kMotionLatching);
     ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, latchOnly, initParams });
-    ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
-    EXPECT_EQ(cluster.HandleStepCommand(StepDirectionEnum::kIncrease, 1, NullOptional), Status::UnsupportedCommand);
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kIncrease;
+    request.numberOfSteps = 1;
+    EXPECT_EQ(tester.Invoke(request).status, Status::UnsupportedCommand);
+
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
 }
 
 TEST_F(TestClosureDimensionCluster, TestHandleStepConstraintError)
 {
-    EXPECT_EQ(mCluster.HandleStepCommand(StepDirectionEnum::kUnknownEnumValue, 1, NullOptional), Status::ConstraintError);
-    EXPECT_EQ(mCluster.HandleStepCommand(StepDirectionEnum::kIncrease, 0, NullOptional), Status::ConstraintError);
+    // An out-of-range wire value is mapped to kUnknownEnumValue by the decoder; sending literal
+    // kUnknownEnumValue is rejected by the encoder, so use an undefined value instead.
+    ClosureDimension::Commands::Step::Type requestUnknownDirection;
+    requestUnknownDirection.direction     = static_cast<StepDirectionEnum>(99);
+    requestUnknownDirection.numberOfSteps = 1;
+    EXPECT_EQ(mClusterTester.Invoke(requestUnknownDirection).status, Status::ConstraintError);
+
+    ClosureDimension::Commands::Step::Type requestZeroSteps;
+    requestZeroSteps.direction     = StepDirectionEnum::kIncrease;
+    requestZeroSteps.numberOfSteps = 0;
+    EXPECT_EQ(mClusterTester.Invoke(requestZeroSteps).status, Status::ConstraintError);
 }
 
 TEST_F(TestClosureDimensionCluster, TestHandleStepSuccess)
 {
-    EXPECT_EQ(mCluster.HandleStepCommand(StepDirectionEnum::kIncrease, 2, NullOptional), Status::Success);
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kIncrease;
+    request.numberOfSteps = 2;
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
     EXPECT_EQ(mockDelegate.stepCalls, 1);
     DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
     EXPECT_FALSE(ts.IsNull());
@@ -453,12 +481,16 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepWhenLatchedInvalidInState)
     latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
     ClosureDimensionCluster cluster(kTestEndpointId,
                                     ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
-    ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetCurrentState(PositionLatchSpeedState(5000, true, NullOptional)), CHIP_NO_ERROR);
 
-    EXPECT_EQ(cluster.HandleStepCommand(StepDirectionEnum::kIncrease, 1, NullOptional), Status::InvalidInState);
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kIncrease;
+    request.numberOfSteps = 1;
+    EXPECT_EQ(tester.Invoke(request).status, Status::InvalidInState);
 
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
 }
@@ -466,5 +498,193 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepWhenLatchedInvalidInState)
 TEST_F(TestClosureDimensionCluster, TestHandleStepDelegateFailure)
 {
     mockDelegate.stepStatus = Status::Busy;
-    EXPECT_EQ(mCluster.HandleStepCommand(StepDirectionEnum::kDecrease, 1, NullOptional), Status::Failure);
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kDecrease;
+    request.numberOfSteps = 1;
+    EXPECT_EQ(mClusterTester.Invoke(request).status, Status::Failure);
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchOnlySuccess)
+{
+    MockClusterConformance latchConformance;
+    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
+    ClosureDimensionCluster cluster(kTestEndpointId,
+                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
+    BitFlags<LatchControlModesBitmap> modes;
+    modes.Set(LatchControlModesBitmap::kRemoteLatching).Set(LatchControlModesBitmap::kRemoteUnlatching);
+    ASSERT_EQ(cluster.SetLatchControlModes(modes), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetCurrentState(PositionLatchSpeedState(5000, false, NullOptional)), CHIP_NO_ERROR);
+
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.latch.SetValue(true);
+    EXPECT_TRUE(tester.Invoke(request).IsSuccess());
+    EXPECT_EQ(mockDelegate.setTargetCalls, 1);
+    DataModel::Nullable<GenericDimensionStateStruct> ts = cluster.GetTargetState();
+    ASSERT_FALSE(ts.IsNull());
+    ASSERT_TRUE(ts.Value().latch.HasValue());
+    ASSERT_FALSE(ts.Value().latch.Value().IsNull());
+    EXPECT_TRUE(ts.Value().latch.Value().Value());
+
+    cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchTrueWithoutRemoteLatching)
+{
+    MockClusterConformance latchConformance;
+    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
+    ClosureDimensionCluster cluster(kTestEndpointId,
+                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
+    // Only RemoteUnlatching is allowed; latch=true should be rejected with InvalidInState.
+    BitFlags<LatchControlModesBitmap> modes;
+    modes.Set(LatchControlModesBitmap::kRemoteUnlatching);
+    ASSERT_EQ(cluster.SetLatchControlModes(modes), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetCurrentState(PositionLatchSpeedState(5000, false, NullOptional)), CHIP_NO_ERROR);
+
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.latch.SetValue(true);
+    EXPECT_EQ(tester.Invoke(request).status, Status::InvalidInState);
+
+    cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleSetTargetSpeedConstraintError)
+{
+    MockClusterConformance speedConformance;
+    speedConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kSpeed);
+    ClosureDimensionCluster cluster(kTestEndpointId,
+                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetCurrentState(PositionState(5000)), CHIP_NO_ERROR);
+
+    // Literal kUnknownEnumValue is rejected at the encoder, so send an undefined wire value
+    // that the decoder will map to kUnknownEnumValue.
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.position.SetValue(static_cast<Percent100ths>(5000));
+    request.speed.SetValue(static_cast<Globals::ThreeLevelAutoEnum>(99));
+    EXPECT_EQ(tester.Invoke(request).status, Status::ConstraintError);
+
+    cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleSetTargetPositionRoundedToResolution)
+{
+    // mCluster has Resolution = 100 (set in SetUp). 5150 should round to 5200.
+    ClosureDimension::Commands::SetTarget::Type request;
+    request.position.SetValue(static_cast<Percent100ths>(5150));
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
+
+    DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
+    ASSERT_FALSE(ts.IsNull());
+    EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(5200));
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleSetTargetPositionClampedByLimitRange)
+{
+    MockClusterConformance limitConformance;
+    limitConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kLimitation);
+    ClosureDimensionCluster cluster(kTestEndpointId,
+                                    ClosureDimensionCluster::Context{ mockDelegate, limitConformance, initParams });
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
+    Structs::RangePercent100thsStruct::Type lr{ .min = static_cast<Percent100ths>(2000), .max = static_cast<Percent100ths>(5000) };
+    ASSERT_EQ(cluster.SetLimitRange(lr), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetCurrentState(PositionState(3000)), CHIP_NO_ERROR);
+
+    // Position above max should clamp to LimitRange.max
+    ClosureDimension::Commands::SetTarget::Type aboveMax;
+    aboveMax.position.SetValue(static_cast<Percent100ths>(9000));
+    EXPECT_TRUE(tester.Invoke(aboveMax).IsSuccess());
+    {
+        DataModel::Nullable<GenericDimensionStateStruct> ts = cluster.GetTargetState();
+        ASSERT_FALSE(ts.IsNull());
+        EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(5000));
+    }
+
+    // Position below min should clamp to LimitRange.min
+    ClosureDimension::Commands::SetTarget::Type belowMin;
+    belowMin.position.SetValue(static_cast<Percent100ths>(500));
+    EXPECT_TRUE(tester.Invoke(belowMin).IsSuccess());
+    {
+        DataModel::Nullable<GenericDimensionStateStruct> ts = cluster.GetTargetState();
+        ASSERT_FALSE(ts.IsNull());
+        EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(2000));
+    }
+
+    cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleStepDecreaseSuccess)
+{
+    // SetUp: currentPosition=5000, stepValue=1000. Decrease by 2 steps → 3000.
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kDecrease;
+    request.numberOfSteps = 2;
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
+    EXPECT_EQ(mockDelegate.stepCalls, 1);
+    DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
+    ASSERT_FALSE(ts.IsNull());
+    EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(3000));
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleStepDecreaseClampsToZero)
+{
+    // Starting at 500, stepValue=1000. Decreasing by 1 would underflow; must clamp to 0.
+    ASSERT_EQ(mCluster.SetCurrentState(PositionState(500)), CHIP_NO_ERROR);
+
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kDecrease;
+    request.numberOfSteps = 1;
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
+    DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
+    ASSERT_FALSE(ts.IsNull());
+    EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(0));
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleStepIncreaseClampsToMax)
+{
+    // Starting at 9500, stepValue=1000. Increasing by 1 would exceed max (10000); must clamp.
+    ASSERT_EQ(mCluster.SetCurrentState(PositionState(9500)), CHIP_NO_ERROR);
+
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kIncrease;
+    request.numberOfSteps = 1;
+    EXPECT_TRUE(mClusterTester.Invoke(request).IsSuccess());
+    DataModel::Nullable<GenericDimensionStateStruct> ts = mCluster.GetTargetState();
+    ASSERT_FALSE(ts.IsNull());
+    EXPECT_EQ(ts.Value().position.Value().Value(), static_cast<Percent100ths>(10000));
+}
+
+TEST_F(TestClosureDimensionCluster, TestHandleStepSpeedConstraintError)
+{
+    MockClusterConformance speedConformance;
+    speedConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kSpeed);
+    ClosureDimensionCluster cluster(kTestEndpointId,
+                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClusterTester tester(cluster);
+    ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
+    ASSERT_EQ(cluster.SetCurrentState(PositionState(5000)), CHIP_NO_ERROR);
+
+    // Undefined wire value is decoded back to kUnknownEnumValue on the cluster side.
+    ClosureDimension::Commands::Step::Type request;
+    request.direction     = StepDirectionEnum::kIncrease;
+    request.numberOfSteps = 1;
+    request.speed.SetValue(static_cast<Globals::ThreeLevelAutoEnum>(99));
+    EXPECT_EQ(tester.Invoke(request).status, Status::ConstraintError);
+
+    cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
 }

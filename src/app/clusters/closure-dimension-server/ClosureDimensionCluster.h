@@ -270,6 +270,7 @@ public:
     BitFlags<LatchControlModesBitmap> GetLatchControlModes() const { return mState.latchControlModes; }
     BitFlags<Feature> GetFeatureMap() const { return mConformance.FeatureMap(); }
 
+private:
     /**
      *  @brief Calls delegate HandleSetTarget function after validating the parameters and conformance.
      *
@@ -302,7 +303,6 @@ public:
     Protocols::InteractionModel::Status HandleStepCommand(StepDirectionEnum direction, uint16_t numberOfSteps,
                                                           Optional<Globals::ThreeLevelAutoEnum> speed);
 
-private:
     /**
      * @brief Set TranslationDirection.
      *             This attribute is not supposed to change once the installation is finalized.

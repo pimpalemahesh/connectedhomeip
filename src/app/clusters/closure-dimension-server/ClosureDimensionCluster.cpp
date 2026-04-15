@@ -185,7 +185,7 @@ std::optional<DataModel::ActionReturnStatus> ClosureDimensionCluster::InvokeComm
 //  so each field of current state struct has to be handled independently.
 //  At present, we are using QuieterReportingAttribute class for Position only.
 //  Latch and Speed changes are directly handled by the cluster logic seperately.
-//  i.e Speed and latch changes are not considered when calucalting the at most 5 seconds quiet reportable changes for Position.
+//  i.e Speed and latch changes are not considered when calculating the at most 5 seconds quiet reportable changes for Position.
 CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<GenericDimensionStateStruct> & incomingCurrentState)
 {
     assertChipStackLockedByCurrentThread();
@@ -386,8 +386,7 @@ CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Struc
 
     if (unitRange.IsNull())
     {
-        mState.unitRange = DataModel::NullNullable;
-        NotifyAttributeChanged(Attributes::UnitRange::Id);
+        SetAttributeValue(mState.unitRange, DataModel::NullNullable, Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
     }
 
@@ -414,7 +413,7 @@ CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Struc
     // If the mState unitRange is null, we need to set it to the new value
     if (mState.unitRange.IsNull())
     {
-        mState.unitRange = unitRange.Value();
+        mState.unitRange.SetNonNull(unitRange.Value());
         NotifyAttributeChanged(Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
     }
@@ -619,9 +618,6 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
 Status ClosureDimensionCluster::HandleStepCommand(StepDirectionEnum direction, uint16_t numberOfSteps,
                                                   Optional<Globals::ThreeLevelAutoEnum> speed)
 {
-    // Return UnsupportedCommand if Positioning feature is not supported.
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), Status::UnsupportedCommand);
-
     // Return ConstraintError if command parameters are out of bounds
     VerifyOrReturnError(direction != StepDirectionEnum::kUnknownEnumValue, Status::ConstraintError);
     VerifyOrReturnError(numberOfSteps > 0, Status::ConstraintError);

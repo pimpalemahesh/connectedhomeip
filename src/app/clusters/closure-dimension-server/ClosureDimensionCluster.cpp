@@ -55,16 +55,14 @@ ClosureDimensionCluster::ClosureDimensionCluster(const Config & config) :
                        "Validation failed: Neither Positioning nor MotionLatching is enabled.");
 
     // If Unit, Limitation or speed is enabled, Positioning must be enabled
-    if (mFeatureMap.Has(Feature::kUnit) || mFeatureMap.Has(Feature::kLimitation) ||
-        mFeatureMap.Has(Feature::kSpeed))
+    if (mFeatureMap.Has(Feature::kUnit) || mFeatureMap.Has(Feature::kLimitation) || mFeatureMap.Has(Feature::kSpeed))
     {
         VerifyOrDieWithMsg(mFeatureMap.Has(Feature::kPositioning), AppServer,
                            "Validation failed: Unit, Limitation, and speed requires the Positioning feature.");
     }
 
     // If Translation, Rotation or Modulation is enabled, Positioning must be enabled.
-    if (mFeatureMap.Has(Feature::kTranslation) || mFeatureMap.Has(Feature::kRotation) ||
-        mFeatureMap.Has(Feature::kModulation))
+    if (mFeatureMap.Has(Feature::kTranslation) || mFeatureMap.Has(Feature::kRotation) || mFeatureMap.Has(Feature::kModulation))
     {
         VerifyOrDieWithMsg(mFeatureMap.Has(Feature::kPositioning), AppServer,
                            "Validation failed: Translation, Rotation or Modulation requires Positioning enabled.");
@@ -354,41 +352,6 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR ClosureDimensionCluster::SetResolution(const Percent100ths resolution)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(0 < resolution && resolution <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    SetAttributeValue(mResolution, resolution, Attributes::Resolution::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetStepValue(const Percent100ths stepValue)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(stepValue <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    // StepValue SHALL be equal to an integer multiple of the Resolution attribute , if not return Invalid Argument.
-    Percent100ths resolution = GetResolution();
-    VerifyOrReturnError(stepValue % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
-                        ChipLogError(AppServer, "StepValue SHALL be equal to an integer multiple of the Resolution attribute"));
-
-    SetAttributeValue(mStepValue, stepValue, Attributes::StepValue::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetUnit(const ClosureUnitEnum unit)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(EnsureKnownEnumValue(unit) != ClosureUnitEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    SetAttributeValue(mUnit, unit, Attributes::Unit::Id);
-
-    return CHIP_NO_ERROR;
-}
-
 CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
 {
     VerifyOrReturnError(mFeatureMap.Has(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
@@ -462,67 +425,6 @@ CHIP_ERROR ClosureDimensionCluster::SetLimitRange(const Structs::RangePercent100
         mLimitRange.max = limitRange.max;
         NotifyAttributeChanged(Attributes::LimitRange::Id);
     }
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetTranslationDirection(const TranslationDirectionEnum translationDirection)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kTranslation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(EnsureKnownEnumValue(translationDirection) != TranslationDirectionEnum::kUnknownEnumValue,
-                        CHIP_ERROR_INVALID_ARGUMENT);
-
-    SetAttributeValue(mTranslationDirection, translationDirection, Attributes::TranslationDirection::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetRotationAxis(const RotationAxisEnum rotationAxis)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(EnsureKnownEnumValue(rotationAxis) != RotationAxisEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    SetAttributeValue(mRotationAxis, rotationAxis, Attributes::RotationAxis::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetOverflow(const OverflowEnum overflow)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(EnsureKnownEnumValue(overflow) != OverflowEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    RotationAxisEnum rotationAxis = GetRotationAxis();
-
-    // If the axis is centered, one part goes Outside and the other part goes Inside.
-    // In this case, this attribute SHALL use Top/Bottom/Left/Right Inside or Top/Bottom/Left/Right Outside enumerated value.
-    if (rotationAxis == RotationAxisEnum::kCenteredHorizontal || rotationAxis == RotationAxisEnum::kCenteredVertical)
-    {
-        VerifyOrReturnError(overflow != OverflowEnum::kNoOverflow && overflow != OverflowEnum::kInside &&
-                                overflow != OverflowEnum::kOutside,
-                            CHIP_ERROR_INVALID_ARGUMENT);
-    }
-
-    SetAttributeValue(mOverflow, overflow, Attributes::Overflow::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetModulationType(const ModulationTypeEnum modulationType)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kModulation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-    VerifyOrReturnError(EnsureKnownEnumValue(modulationType) != ModulationTypeEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
-
-    SetAttributeValue(mModulationType, modulationType, Attributes::ModulationType::Id);
-
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR ClosureDimensionCluster::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
-{
-    VerifyOrReturnError(mFeatureMap.Has(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
-
-    SetAttributeValue(mLatchControlModes, latchControlModes, Attributes::LatchControlModes::Id);
 
     return CHIP_NO_ERROR;
 }

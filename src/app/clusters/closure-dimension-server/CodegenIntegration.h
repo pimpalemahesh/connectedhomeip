@@ -95,9 +95,14 @@ private:
  */
 struct ClusterInitParameters
 {
+    Percent100ths resolution                      = 1;
+    Percent100ths stepValue                       = 1;
+    ClosureUnitEnum unit                          = ClosureUnitEnum::kUnknownEnumValue;
     TranslationDirectionEnum translationDirection = TranslationDirectionEnum::kUnknownEnumValue;
     RotationAxisEnum rotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
+    OverflowEnum overflow                         = OverflowEnum::kUnknownEnumValue;
     ModulationTypeEnum modulationType             = ModulationTypeEnum::kUnknownEnumValue;
+    BitFlags<LatchControlModesBitmap> latchControlModes;
 };
 
 class Interface
@@ -137,42 +142,6 @@ public:
     CHIP_ERROR SetTargetState(const DataModel::Nullable<GenericDimensionStateStruct> & targetState);
 
     /**
-     * @brief Set Resolution.
-     *
-     * @param[in] resolution Minimal acceptable change of Position fields of attributes.
-     *
-     * @return CHIP_NO_ERROR if set was successful.
-     *         CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized
-     *         CHIP_ERROR_INVALID_ARGUMENT if argument are not valid
-     *         CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if feature is not supported.
-     */
-    CHIP_ERROR SetResolution(const Percent100ths resolution);
-
-    /**
-     * @brief Set StepValue.
-     *
-     * @param[in] stepValue One step value for Step command
-     *
-     * @return CHIP_NO_ERROR if set was successful.
-     *         CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized
-     *         CHIP_ERROR_INVALID_ARGUMENT if argument are not valid
-     *         CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if feature is not supported.
-     */
-    CHIP_ERROR SetStepValue(const Percent100ths stepValue);
-
-    /**
-     * @brief Set Unit.
-     *
-     * @param[in] unit Unit related to the Positioning.
-     *
-     * @return CHIP_NO_ERROR if set was successful.
-     *         CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized
-     *         CHIP_ERROR_INVALID_ARGUMENT if argument are not valid
-     *         CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if feature is not supported.
-     */
-    CHIP_ERROR SetUnit(const ClosureUnitEnum unit);
-
-    /**
      * @brief Set UnitRange.
      *
      * @param[in] unitRange Minimum and Maximum values expressed by positioning following the unit.
@@ -195,28 +164,6 @@ public:
      *         CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if feature is not supported.
      */
     CHIP_ERROR SetLimitRange(const Structs::RangePercent100thsStruct::Type & limitRange);
-
-    /**
-     * @brief Set Overflow.
-     *
-     * @param[in] overflow Overflow related to Rotation.
-     *
-     * @return CHIP_NO_ERROR if set was successful.
-     *         CHIP_ERROR_INVALID_ARGUMENT if argument are not valid
-     *         CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized
-     *         CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if feature is not supported.
-     */
-    CHIP_ERROR SetOverflow(const OverflowEnum overflow);
-
-    /**
-     * @brief Sets the latch control modes for the closure dimension cluster.
-     *
-     * This method updates the latch control modes using the provided bit flags.
-     *
-     * @param latchControlModes BitFlags representing the desired latch control modes.
-     * @return CHIP_ERROR Returns CHIP_NO_ERROR on success, or an appropriate error code on failure.
-     */
-    CHIP_ERROR SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes);
 
     // All Get functions:
     // Return CHIP_ERROR_INCORRECT_STATE if the cluster has not been initialized.

@@ -50,16 +50,15 @@ CHIP_ERROR Interface::Init()
 
     if (mConformance.HasFeature(Feature::kPositioning))
     {
-        // Use default resolution=1, stepValue=1; the app can override via SetResolution/SetStepValue after Init
-        config.WithPositioning(1, 1);
+        config.WithPositioning(mInitParams.resolution, mInitParams.stepValue);
     }
     if (mConformance.HasFeature(Feature::kMotionLatching))
     {
-        config.WithMotionLatching(BitFlags<LatchControlModesBitmap>());
+        config.WithMotionLatching(mInitParams.latchControlModes);
     }
     if (mConformance.HasFeature(Feature::kUnit))
     {
-        config.WithUnit(ClosureUnitEnum::kUnknownEnumValue, DataModel::Nullable<Structs::UnitRangeStruct::Type>());
+        config.WithUnit(mInitParams.unit, DataModel::Nullable<Structs::UnitRangeStruct::Type>());
     }
     if (mConformance.HasFeature(Feature::kLimitation))
     {
@@ -75,7 +74,7 @@ CHIP_ERROR Interface::Init()
     }
     if (mConformance.HasFeature(Feature::kRotation))
     {
-        config.WithRotation(mInitParams.rotationAxis, OverflowEnum::kUnknownEnumValue);
+        config.WithRotation(mInitParams.rotationAxis, mInitParams.overflow);
     }
     if (mConformance.HasFeature(Feature::kModulation))
     {
@@ -103,23 +102,6 @@ CHIP_ERROR Interface::SetTargetState(const DataModel::Nullable<GenericDimensionS
     return mCluster.Cluster().SetTargetState(targetState);
 }
 
-CHIP_ERROR Interface::SetResolution(const Percent100ths resolution)
-{
-    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
-    return mCluster.Cluster().SetResolution(resolution);
-}
-
-CHIP_ERROR Interface::SetStepValue(const Percent100ths stepValue)
-{
-    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
-    return mCluster.Cluster().SetStepValue(stepValue);
-}
-
-CHIP_ERROR Interface::SetUnit(const ClosureUnitEnum unit)
-{
-    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
-    return mCluster.Cluster().SetUnit(unit);
-}
 CHIP_ERROR Interface::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
 {
     VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
@@ -129,17 +111,6 @@ CHIP_ERROR Interface::SetLimitRange(const Structs::RangePercent100thsStruct::Typ
 {
     VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
     return mCluster.Cluster().SetLimitRange(limitRange);
-}
-CHIP_ERROR Interface::SetOverflow(const OverflowEnum overflow)
-{
-    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
-    return mCluster.Cluster().SetOverflow(overflow);
-}
-
-CHIP_ERROR Interface::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
-{
-    VerifyOrReturnError(mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
-    return mCluster.Cluster().SetLatchControlModes(latchControlModes);
 }
 CHIP_ERROR Interface::GetCurrentState(DataModel::Nullable<GenericDimensionStateStruct> & currentState)
 {

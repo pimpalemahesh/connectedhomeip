@@ -53,6 +53,10 @@
 #include <DeviceInfoProviderImpl.h>
 #endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
 
+#if CONFIG_SEC_CERT_DAC_PROVIDER
+#include <platform/ESP32/ESP32SecureCertDACProvider.h>
+#endif
+
 using namespace ::chip;
 using namespace chip::app;
 using namespace chip::app::Clusters;

@@ -22,14 +22,14 @@ To enable only metrics:
 
 ```
 CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES=n
-CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED=y
+CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_METRICS=y
 ```
 
 To enable only traces:
 
 ```
 CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES=y
-CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED=n
+CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_METRICS=n
 ```
 
 After modifying the configuration options, make sure to perform a clean build to

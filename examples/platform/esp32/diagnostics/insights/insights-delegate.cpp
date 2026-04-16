@@ -31,8 +31,6 @@
 #include <tracing/esp32_diagnostics/DiagnosticTracing.h>
 #include <vector>
 
-#define kMaxStringValueSize 128
-
 using namespace chip;
 using namespace chip::Tracing;
 using namespace chip::Tracing::Diagnostics;
@@ -46,13 +44,15 @@ namespace Insights {
 CHIP_ERROR InsightsDelegate::Init(InsightsInitParams & initParams)
 {
     VerifyOrReturnError(initParams.authKey != nullptr, CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(initParams.diagnosticBuffer != nullptr, CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(initParams.diagnosticBufferSize > 0, CHIP_ERROR_INVALID_ARGUMENT);
     esp_insights_config_t config = { .log_type      = ESP_DIAG_LOG_TYPE_ERROR | ESP_DIAG_LOG_TYPE_WARNING | ESP_DIAG_LOG_TYPE_EVENT,
                                      .node_id       = NULL,
                                      .auth_key      = initParams.authKey,
                                      .alloc_ext_ram = false };
-    esp_err_t ret                = esp_insights_init(&config);
-    VerifyOrReturnError(ret == ESP_OK, CHIP_ERROR_INTERNAL, ESP_LOGE(TAG, "Failed to initialize ESP Insights"));
-    VerifyOrReturnError(mStorageInstance == nullptr, CHIP_ERROR_NO_MEMORY, ESP_LOGE(TAG, "Diagnostic buffer already initialized"));
+    VerifyOrReturnError(mStorageInstance == nullptr, CHIP_ERROR_INCORRECT_STATE, ESP_LOGE(TAG, "Diagnostic buffer already initialized"));
+    esp_err_t ret = esp_insights_init(&config);
+    VerifyOrReturnError(ret == ESP_OK, CHIP_ERROR_INTERNAL, ESP_LOGE(TAG, "Failed to initialize ESP Insights, err:%d", ret));
     mStorageInstance = new CircularDiagnosticBuffer(initParams.diagnosticBuffer, initParams.diagnosticBufferSize);
     VerifyOrReturnError(mStorageInstance != nullptr, CHIP_ERROR_NO_MEMORY, ESP_LOGE(TAG, "Failed to create diagnostic buffer"));
     static ESP32Diagnostics diagnosticBackend(mStorageInstance);
@@ -202,7 +202,7 @@ void InsightsDelegate::LogMetricData(const DiagnosticEntry & entry)
     switch (entry.type)
     {
     case ValueType::kSignedInteger: {
-        ESP_LOGD(TAG, "The value of %s is %ld", entry.label, static_cast<int32_t>(entry.intValue));
+        ESP_LOGD(TAG, "The value of %s is %" PRId32, entry.label, static_cast<int32_t>(entry.intValue));
         esp_err_t err = esp_diag_metrics_add_int(label.c_str(), static_cast<int32_t>(entry.intValue));
         if (err == ESP_OK)
         {
@@ -212,7 +212,7 @@ void InsightsDelegate::LogMetricData(const DiagnosticEntry & entry)
     }
 
     case ValueType::kUnsignedInteger: {
-        ESP_LOGD(TAG, "The value of %s is %lu", entry.label, entry.uintValue);
+        ESP_LOGD(TAG, "The value of %s is %" PRIu32, entry.label, entry.uintValue);
         esp_err_t err = esp_diag_metrics_add_uint(entry.label, entry.uintValue);
         if (err == ESP_OK)
         {
@@ -240,7 +240,7 @@ void InsightsDelegate::InsightsHandler(System::Layer * systemLayer, void * conte
 
     // Schedule next sampling
     DeviceLayer::SystemLayer().StartTimer(instance->mTimeout, InsightsHandler, instance);
-    ESP_LOGD(TAG, "Free heap Memory: %ld\n", esp_get_free_heap_size());
+    ESP_LOGD(TAG, "Free heap Memory: %" PRIu32, esp_get_free_heap_size());
 }
 } // namespace Insights
 } // namespace chip

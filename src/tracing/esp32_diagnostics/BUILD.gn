@@ -23,7 +23,7 @@ config("tracing") {
 config("diagnostic_config") {
   defines = [
     "CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_TRACES",
-    "CONFIG_ESP_DIAGNOSTIC_METRICS_ENABLED",
+    "CONFIG_CHIP_ENABLE_ESP_DIAGNOSTIC_METRICS",
   ]
 }
 

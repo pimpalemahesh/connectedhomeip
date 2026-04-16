@@ -50,7 +50,8 @@ CHIP_ERROR InsightsDelegate::Init(InsightsInitParams & initParams)
                                      .node_id       = NULL,
                                      .auth_key      = initParams.authKey,
                                      .alloc_ext_ram = false };
-    VerifyOrReturnError(mStorageInstance == nullptr, CHIP_ERROR_INCORRECT_STATE, ESP_LOGE(TAG, "Diagnostic buffer already initialized"));
+    VerifyOrReturnError(mStorageInstance == nullptr, CHIP_ERROR_INCORRECT_STATE,
+                        ESP_LOGE(TAG, "Diagnostic buffer already initialized"));
     esp_err_t ret = esp_insights_init(&config);
     VerifyOrReturnError(ret == ESP_OK, CHIP_ERROR_INTERNAL, ESP_LOGE(TAG, "Failed to initialize ESP Insights, err:%d", ret));
     mStorageInstance = new CircularDiagnosticBuffer(initParams.diagnosticBuffer, initParams.diagnosticBufferSize);

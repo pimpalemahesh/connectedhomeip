@@ -95,12 +95,6 @@ public:
     Optional<Globals::ThreeLevelAutoEnum> lastStepSpeed;
 };
 
-class MockClusterConformance : public ClusterConformance
-{
-public:
-    MockClusterConformance() { FeatureMap().Set(Feature::kPositioning); }
-};
-
 DataModel::Nullable<GenericDimensionStateStruct> PositionState(Percent100ths position)
 {
     return DataModel::Nullable<GenericDimensionStateStruct>(
@@ -118,7 +112,7 @@ class TestClosureDimensionCluster : public ::testing::Test
 {
 public:
     TestClosureDimensionCluster() :
-        mCluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, mockConformance, initParams }),
+        mCluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithPositioning(1, 1)),
         mClusterTester(mCluster)
     {}
 
@@ -141,8 +135,6 @@ public:
     }
 
     MockDelegate mockDelegate;
-    MockClusterConformance mockConformance;
-    ClusterInitParameters initParams{};
     const EndpointId kTestEndpointId = 1;
     ClosureDimensionCluster mCluster;
     ClusterTester mClusterTester;
@@ -159,17 +151,16 @@ TEST_F(TestClosureDimensionCluster, TestAttributesList)
     expectedAttributes.push_back(ClosureDimension::Attributes::StepValue::kMetadataEntry);
     EXPECT_TRUE(IsAttributesListEqualTo(mCluster, expectedAttributes));
 
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster latchCluster(kTestEndpointId,
-                                         ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster latchCluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                             .WithPositioning(1, 1)
+                                             .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     expectedAttributes.push_back(ClosureDimension::Attributes::LatchControlModes::kMetadataEntry);
     EXPECT_TRUE(IsAttributesListEqualTo(latchCluster, expectedAttributes));
 
-    MockClusterConformance unitConformance;
-    unitConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kUnit);
-    ClosureDimensionCluster unitCluster(kTestEndpointId,
-                                        ClosureDimensionCluster::Context{ mockDelegate, unitConformance, initParams });
+    ClosureDimensionCluster unitCluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+            .WithPositioning(1, 1)
+            .WithUnit(ClosureUnitEnum::kUnknownEnumValue, DataModel::Nullable<Structs::UnitRangeStruct::Type>()));
     std::vector<DataModel::AttributeEntry> unitExpected(ClosureDimension::Attributes::kMandatoryMetadata.begin(),
                                                         ClosureDimension::Attributes::kMandatoryMetadata.end());
     unitExpected.push_back(ClosureDimension::Attributes::Resolution::kMetadataEntry);
@@ -181,7 +172,7 @@ TEST_F(TestClosureDimensionCluster, TestAttributesList)
 
 TEST_F(TestClosureDimensionCluster, TestMandatoryAcceptedCommands)
 {
-    // Step command is added by default as Positioning feature is available by default in MockClusterConformance.
+    // Step command is added by default as Positioning feature is available by default.
     EXPECT_TRUE(IsAcceptedCommandsListEqualTo(mCluster,
                                               {
                                                   ClosureDimension::Commands::SetTarget::kMetadataEntry,
@@ -191,9 +182,8 @@ TEST_F(TestClosureDimensionCluster, TestMandatoryAcceptedCommands)
 
 TEST_F(TestClosureDimensionCluster, TestAcceptedCommandsSetTargetOnlyWithoutPositioning)
 {
-    MockClusterConformance latchOnly;
-    latchOnly.FeatureMap().ClearAll().Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, latchOnly, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     EXPECT_TRUE(IsAcceptedCommandsListEqualTo(cluster,
                                               {
                                                   ClosureDimension::Commands::SetTarget::kMetadataEntry,
@@ -211,7 +201,9 @@ TEST_F(TestClosureDimensionCluster, TestReadFeatureMap)
 {
     BitFlags<Feature> featureMap;
     EXPECT_EQ(mClusterTester.ReadAttribute(Attributes::FeatureMap::Id, featureMap), CHIP_NO_ERROR);
-    EXPECT_EQ(featureMap, mockConformance.FeatureMap());
+    BitFlags<Feature> expected;
+    expected.Set(Feature::kPositioning);
+    EXPECT_EQ(featureMap, expected);
 }
 
 TEST_F(TestClosureDimensionCluster, TestSetCurrentStateFeatureValidation)
@@ -219,10 +211,8 @@ TEST_F(TestClosureDimensionCluster, TestSetCurrentStateFeatureValidation)
     EXPECT_EQ(mCluster.SetCurrentState(PositionState(5100)), CHIP_NO_ERROR);
     EXPECT_EQ(mCluster.GetCurrentState(), PositionState(5100));
 
-    MockClusterConformance speedConformance;
-    speedConformance.FeatureMap().ClearAll().Set(Feature::kPositioning).Set(Feature::kSpeed);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithPositioning(1, 1).WithSpeed());
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -245,10 +235,8 @@ TEST_F(TestClosureDimensionCluster, TestSetTargetStateFeatureValidation)
     EXPECT_EQ(mCluster.SetTargetState(PositionState(6000)), CHIP_NO_ERROR);
     EXPECT_EQ(mCluster.GetTargetState(), PositionState(6000));
 
-    MockClusterConformance speedConformance;
-    speedConformance.FeatureMap().ClearAll().Set(Feature::kPositioning).Set(Feature::kSpeed);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithPositioning(1, 1).WithSpeed());
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -278,9 +266,10 @@ TEST_F(TestClosureDimensionCluster, TestSetResolutionAndStepValue)
 
 TEST_F(TestClosureDimensionCluster, TestSetUnitAndUnitRange)
 {
-    MockClusterConformance unitConformance;
-    unitConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kUnit);
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, unitConformance, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+            .WithPositioning(1, 1)
+            .WithUnit(ClosureUnitEnum::kUnknownEnumValue, DataModel::Nullable<Structs::UnitRangeStruct::Type>()));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -298,10 +287,9 @@ TEST_F(TestClosureDimensionCluster, TestSetUnitAndUnitRange)
 
 TEST_F(TestClosureDimensionCluster, TestSetLimitRange)
 {
-    MockClusterConformance limitConformance;
-    limitConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kLimitation);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, limitConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithLimitation(Structs::RangePercent100thsStruct::Type{}));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -316,10 +304,9 @@ TEST_F(TestClosureDimensionCluster, TestSetLimitRange)
 
 TEST_F(TestClosureDimensionCluster, TestSetLatchControlModes)
 {
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -334,11 +321,9 @@ TEST_F(TestClosureDimensionCluster, TestSetLatchControlModes)
 
 TEST_F(TestClosureDimensionCluster, TestTranslationDirectionInit)
 {
-    MockClusterConformance tr;
-    tr.FeatureMap().Set(Feature::kPositioning).Set(Feature::kTranslation);
-    ClusterInitParameters params{};
-    params.translationDirection = TranslationDirectionEnum::kUpward;
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, tr, params });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithTranslation(TranslationDirectionEnum::kUpward));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     EXPECT_EQ(cluster.GetTranslationDirection(), TranslationDirectionEnum::kUpward);
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
@@ -346,11 +331,10 @@ TEST_F(TestClosureDimensionCluster, TestTranslationDirectionInit)
 
 TEST_F(TestClosureDimensionCluster, TestRotationAxisAndOverflow)
 {
-    MockClusterConformance rot;
-    rot.FeatureMap().Set(Feature::kPositioning).Set(Feature::kRotation);
-    ClusterInitParameters params{};
-    params.rotationAxis = RotationAxisEnum::kCenteredVertical;
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, rot, params });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+            .WithPositioning(1, 1)
+            .WithRotation(RotationAxisEnum::kCenteredVertical, OverflowEnum::kUnknownEnumValue));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetStepValue(1000), CHIP_NO_ERROR);
@@ -362,11 +346,9 @@ TEST_F(TestClosureDimensionCluster, TestRotationAxisAndOverflow)
 
 TEST_F(TestClosureDimensionCluster, TestModulationTypeInit)
 {
-    MockClusterConformance mod;
-    mod.FeatureMap().Set(Feature::kPositioning).Set(Feature::kModulation);
-    ClusterInitParameters params{};
-    params.modulationType = ModulationTypeEnum::kOpacity;
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, mod, params });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithModulation(ModulationTypeEnum::kOpacity));
     ASSERT_EQ(cluster.Startup(mClusterTester.GetServerClusterContext()), CHIP_NO_ERROR);
     EXPECT_EQ(cluster.GetModulationType(), ModulationTypeEnum::kOpacity);
     cluster.Shutdown(ClusterShutdownType::kClusterShutdown);
@@ -406,10 +388,9 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetDelegateFailure)
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetInvalidInStateWhenLatched)
 {
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -434,9 +415,8 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetInvalidInStateWhenLatched
 
 TEST_F(TestClosureDimensionCluster, TestHandleStepUnsupportedWithoutPositioning)
 {
-    MockClusterConformance latchOnly;
-    latchOnly.FeatureMap().ClearAll().Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId, ClosureDimensionCluster::Context{ mockDelegate, latchOnly, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
 
@@ -477,10 +457,9 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepSuccess)
 
 TEST_F(TestClosureDimensionCluster, TestHandleStepWhenLatchedInvalidInState)
 {
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -506,10 +485,9 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepDelegateFailure)
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchOnlySuccess)
 {
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -534,10 +512,9 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchOnlySuccess)
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchTrueWithoutRemoteLatching)
 {
-    MockClusterConformance latchConformance;
-    latchConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kMotionLatching);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, latchConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -557,10 +534,8 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetLatchTrueWithoutRemoteLat
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetSpeedConstraintError)
 {
-    MockClusterConformance speedConformance;
-    speedConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kSpeed);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithPositioning(1, 1).WithSpeed());
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -591,10 +566,9 @@ TEST_F(TestClosureDimensionCluster, TestHandleSetTargetPositionRoundedToResoluti
 
 TEST_F(TestClosureDimensionCluster, TestHandleSetTargetPositionClampedByLimitRange)
 {
-    MockClusterConformance limitConformance;
-    limitConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kLimitation);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, limitConformance, initParams });
+    ClosureDimensionCluster cluster(ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate)
+                                        .WithPositioning(1, 1)
+                                        .WithLimitation(Structs::RangePercent100thsStruct::Type{}));
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);
@@ -669,10 +643,8 @@ TEST_F(TestClosureDimensionCluster, TestHandleStepIncreaseClampsToMax)
 
 TEST_F(TestClosureDimensionCluster, TestHandleStepSpeedConstraintError)
 {
-    MockClusterConformance speedConformance;
-    speedConformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kSpeed);
-    ClosureDimensionCluster cluster(kTestEndpointId,
-                                    ClosureDimensionCluster::Context{ mockDelegate, speedConformance, initParams });
+    ClosureDimensionCluster cluster(
+        ClosureDimensionCluster::Config(kTestEndpointId, mockDelegate).WithPositioning(1, 1).WithSpeed());
     ClusterTester tester(cluster);
     ASSERT_EQ(cluster.Startup(tester.GetServerClusterContext()), CHIP_NO_ERROR);
     ASSERT_EQ(cluster.SetResolution(100), CHIP_NO_ERROR);

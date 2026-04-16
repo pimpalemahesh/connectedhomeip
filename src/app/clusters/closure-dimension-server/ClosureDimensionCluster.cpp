@@ -43,29 +43,40 @@ constexpr uint64_t kPositionQuietReportingInterval = 5000;
 
 } // namespace
 
-ClosureDimensionCluster::ClosureDimensionCluster(EndpointId endpointId, const Context & context) :
-    DefaultServerCluster({ endpointId, ClosureDimension::Id }), mDelegate(context.delegate), mConformance(context.conformance)
+ClosureDimensionCluster::ClosureDimensionCluster(const Config & config) :
+    DefaultServerCluster({ config.mEndpointId, ClosureDimension::Id }), mDelegate(config.mDelegate),
+    mResolution(config.mResolution), mStepValue(config.mStepValue), mUnit(config.mUnit), mUnitRange(config.mUnitRange),
+    mLimitRange(config.mLimitRange), mTranslationDirection(config.mTranslationDirection), mRotationAxis(config.mRotationAxis),
+    mOverflow(config.mOverflow), mModulationType(config.mModulationType), mLatchControlModes(config.mLatchControlModes),
+    mFeatureMap(config.mFeatureMap)
 {
-    VerifyOrDieWithMsg(context.conformance.IsValid(), AppServer, "Invalid conformance");
+    // Positioning or MotionLatching must be enabled
+    VerifyOrDieWithMsg(mFeatureMap.Has(Feature::kPositioning) || mFeatureMap.Has(Feature::kMotionLatching), AppServer,
+                       "Validation failed: Neither Positioning nor MotionLatching is enabled.");
 
-    // Need to set TranslationDirection, RotationAxis, ModulationType before Initilization of closure, as they should not be changed
-    // after Initalization.
-    if (mConformance.HasFeature(Feature::kTranslation))
+    // If Unit, Limitation or speed is enabled, Positioning must be enabled
+    if (mFeatureMap.Has(Feature::kUnit) || mFeatureMap.Has(Feature::kLimitation) ||
+        mFeatureMap.Has(Feature::kSpeed))
     {
-        VerifyOrDieWithMsg(SetTranslationDirection(context.initParams.translationDirection) == CHIP_NO_ERROR, AppServer,
-                           "Failed to set translation direction");
+        VerifyOrDieWithMsg(mFeatureMap.Has(Feature::kPositioning), AppServer,
+                           "Validation failed: Unit, Limitation, and speed requires the Positioning feature.");
     }
 
-    if (mConformance.HasFeature(Feature::kRotation))
+    // If Translation, Rotation or Modulation is enabled, Positioning must be enabled.
+    if (mFeatureMap.Has(Feature::kTranslation) || mFeatureMap.Has(Feature::kRotation) ||
+        mFeatureMap.Has(Feature::kModulation))
     {
-        VerifyOrDieWithMsg(SetRotationAxis(context.initParams.rotationAxis) == CHIP_NO_ERROR, AppServer,
-                           "Failed to set rotation axis");
+        VerifyOrDieWithMsg(mFeatureMap.Has(Feature::kPositioning), AppServer,
+                           "Validation failed: Translation, Rotation or Modulation requires Positioning enabled.");
     }
 
-    if (mConformance.HasFeature(Feature::kModulation))
+    // Only one of Translation, Rotation or Modulation features must be enabled. Return false otherwise.
+    if ((mFeatureMap.Has(Feature::kTranslation) && mFeatureMap.Has(Feature::kRotation)) ||
+        (mFeatureMap.Has(Feature::kRotation) && mFeatureMap.Has(Feature::kModulation)) ||
+        (mFeatureMap.Has(Feature::kModulation) && mFeatureMap.Has(Feature::kTranslation)))
     {
-        VerifyOrDieWithMsg(SetModulationType(context.initParams.modulationType) == CHIP_NO_ERROR, AppServer,
-                           "Failed to set modulation type");
+        VerifyOrDieWithMsg(false, AppServer,
+                           "Validation failed: Only one of Translation, Rotation or Modulation feature can be enabled.");
     }
 }
 
@@ -76,16 +87,16 @@ CHIP_ERROR ClosureDimensionCluster::Attributes(const ConcreteClusterPath & path,
 {
     using OptionalEntry                = AttributeListBuilder::OptionalAttributeEntry;
     OptionalEntry optionalAttributes[] = {
-        { mConformance.HasFeature(Feature::kPositioning), Attributes::Resolution::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kPositioning), Attributes::StepValue::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kUnit), Attributes::Unit::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kUnit), Attributes::UnitRange::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kLimitation), Attributes::LimitRange::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kTranslation), Attributes::TranslationDirection::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kRotation), Attributes::RotationAxis::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kRotation), Attributes::Overflow::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kModulation), Attributes::ModulationType::kMetadataEntry },
-        { mConformance.HasFeature(Feature::kMotionLatching), Attributes::LatchControlModes::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kPositioning), Attributes::Resolution::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kPositioning), Attributes::StepValue::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kUnit), Attributes::Unit::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kUnit), Attributes::UnitRange::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kLimitation), Attributes::LimitRange::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kTranslation), Attributes::TranslationDirection::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kRotation), Attributes::RotationAxis::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kRotation), Attributes::Overflow::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kModulation), Attributes::ModulationType::kMetadataEntry },
+        { mFeatureMap.Has(Feature::kMotionLatching), Attributes::LatchControlModes::kMetadataEntry },
     };
 
     AttributeListBuilder listBuilder(builder);
@@ -95,8 +106,6 @@ CHIP_ERROR ClosureDimensionCluster::Attributes(const ConcreteClusterPath & path,
 CHIP_ERROR ClosureDimensionCluster::AcceptedCommands(const ConcreteClusterPath & path,
                                                      ReadOnlyBufferBuilder<DataModel::AcceptedCommandEntry> & builder)
 {
-    const ClusterConformance & conformance = mConformance;
-
     static constexpr DataModel::AcceptedCommandEntry kMandatoryCommands[] = {
         Commands::SetTarget::kMetadataEntry,
     };
@@ -106,7 +115,7 @@ CHIP_ERROR ClosureDimensionCluster::AcceptedCommands(const ConcreteClusterPath &
     };
 
     ReturnErrorOnFailure(builder.ReferenceExisting(kMandatoryCommands));
-    if (conformance.HasFeature(Feature::kPositioning))
+    if (mFeatureMap.Has(Feature::kPositioning))
     {
         ReturnErrorOnFailure(builder.ReferenceExisting(kStepCommand));
     }
@@ -190,7 +199,7 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
 {
     assertChipStackLockedByCurrentThread();
 
-    VerifyOrReturnError(mState.currentState != incomingCurrentState, CHIP_NO_ERROR);
+    VerifyOrReturnError(mCurrentState != incomingCurrentState, CHIP_NO_ERROR);
 
     bool markDirty = false;
 
@@ -201,7 +210,7 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
         {
             //  If the position member is present in the incoming CurrentState, we need to check if the Positioning
             //  feature is supported by the closure. If the Positioning feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
             if (!incomingCurrentState.Value().position.Value().IsNull())
             {
@@ -215,9 +224,9 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
 
             // Logic to determine if target position is reached.
             // If the target position is reached, current state attribute will be marked dirty and reported.
-            if (!mState.targetState.IsNull() && mState.targetState.Value().position.HasValue() &&
-                !mState.targetState.Value().position.Value().IsNull() &&
-                mState.targetState.Value().position == incomingCurrentState.Value().position)
+            if (!mTargetState.IsNull() && mTargetState.Value().position.HasValue() &&
+                !mTargetState.Value().position.Value().IsNull() &&
+                mTargetState.Value().position == incomingCurrentState.Value().position)
             {
                 targetPositionReached = true;
             }
@@ -247,11 +256,11 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
         {
             //  If the latching member is present in the incoming CurrentState, we need to check if the MotionLatching
             //  feature is supported by the closure. If the MotionLatching feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
         }
 
         // Changes to this attribute SHALL only be marked as reportable when latch changes.
-        if (!mState.currentState.IsNull() && mState.currentState.Value().latch != incomingCurrentState.Value().latch)
+        if (!mCurrentState.IsNull() && mCurrentState.Value().latch != incomingCurrentState.Value().latch)
         {
             markDirty = true;
         }
@@ -261,7 +270,7 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
         {
             //  If the speed member is present in the incoming CurrentState, we need to check if the Speed feature is
             //  supported by the closure. If the Speed feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kSpeed), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kSpeed), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
             VerifyOrReturnError(EnsureKnownEnumValue(incomingCurrentState.Value().speed.Value()) !=
                                     Globals::ThreeLevelAutoEnum::kUnknownEnumValue,
@@ -269,19 +278,19 @@ CHIP_ERROR ClosureDimensionCluster::SetCurrentState(const DataModel::Nullable<Ge
         }
 
         // Changes to this attribute SHALL be marked as reportable when speed changes.
-        if (!mState.currentState.IsNull() && mState.currentState.Value().speed != incomingCurrentState.Value().speed)
+        if (!mCurrentState.IsNull() && mCurrentState.Value().speed != incomingCurrentState.Value().speed)
         {
             markDirty = true;
         }
     }
 
     // If the current state is null and the incoming current state is not null and vice versa, we need to mark dirty.
-    if (mState.currentState.IsNull() != incomingCurrentState.IsNull())
+    if (mCurrentState.IsNull() != incomingCurrentState.IsNull())
     {
         markDirty = true;
     }
 
-    mState.currentState = incomingCurrentState;
+    mCurrentState = incomingCurrentState;
 
     if (markDirty)
     {
@@ -295,7 +304,7 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
 {
     assertChipStackLockedByCurrentThread();
 
-    VerifyOrReturnError(mState.targetState != incomingTargetState, CHIP_NO_ERROR);
+    VerifyOrReturnError(mTargetState != incomingTargetState, CHIP_NO_ERROR);
 
     if (!incomingTargetState.IsNull())
     {
@@ -304,7 +313,7 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
         {
             //  If the position member is present in the incoming TargetState, we need to check if the Positioning
             //  feature is supported by the closure. If the Positioning feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
             if (!incomingTargetState.Value().position.Value().IsNull())
             {
@@ -324,7 +333,7 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
         {
             //  If the latching member is present in the incoming TargetState, we need to check if the MotionLatching
             //  feature is supported by the closure. If the MotionLatching feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
         }
 
         // Validate the incoming Speed value has valid input parameters and FeatureMap conformance.
@@ -332,7 +341,7 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
         {
             //  If the speed member is present in the incoming TargetState, we need to check if the Speed feature is
             //  supported by the closure. If the Speed feature is not supported, return an error.
-            VerifyOrReturnError(mConformance.HasFeature(Feature::kSpeed), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+            VerifyOrReturnError(mFeatureMap.Has(Feature::kSpeed), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
             VerifyOrReturnError(EnsureKnownEnumValue(incomingTargetState.Value().speed.Value()) !=
                                     Globals::ThreeLevelAutoEnum::kUnknownEnumValue,
@@ -340,24 +349,24 @@ CHIP_ERROR ClosureDimensionCluster::SetTargetState(const DataModel::Nullable<Gen
         }
     }
 
-    SetAttributeValue(mState.targetState, incomingTargetState, Attributes::TargetState::Id);
+    SetAttributeValue(mTargetState, incomingTargetState, Attributes::TargetState::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetResolution(const Percent100ths resolution)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(0 < resolution && resolution <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    SetAttributeValue(mState.resolution, resolution, Attributes::Resolution::Id);
+    SetAttributeValue(mResolution, resolution, Attributes::Resolution::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetStepValue(const Percent100ths stepValue)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kPositioning), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(stepValue <= kPercents100thsMaxValue, CHIP_ERROR_INVALID_ARGUMENT);
 
     // StepValue SHALL be equal to an integer multiple of the Resolution attribute , if not return Invalid Argument.
@@ -365,28 +374,28 @@ CHIP_ERROR ClosureDimensionCluster::SetStepValue(const Percent100ths stepValue)
     VerifyOrReturnError(stepValue % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
                         ChipLogError(AppServer, "StepValue SHALL be equal to an integer multiple of the Resolution attribute"));
 
-    SetAttributeValue(mState.stepValue, stepValue, Attributes::StepValue::Id);
+    SetAttributeValue(mStepValue, stepValue, Attributes::StepValue::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetUnit(const ClosureUnitEnum unit)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(unit) != ClosureUnitEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    SetAttributeValue(mState.unit, unit, Attributes::Unit::Id);
+    SetAttributeValue(mUnit, unit, Attributes::Unit::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Structs::UnitRangeStruct::Type> & unitRange)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kUnit), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
     if (unitRange.IsNull())
     {
-        SetAttributeValue(mState.unitRange, DataModel::NullNullable, Attributes::UnitRange::Id);
+        SetAttributeValue(mUnitRange, DataModel::NullNullable, Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
     }
 
@@ -410,19 +419,19 @@ CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Struc
         VerifyOrReturnError((unitRange.Value().max - unitRange.Value().min) <= 360, CHIP_ERROR_INVALID_ARGUMENT);
     }
 
-    // If the mState unitRange is null, we need to set it to the new value
-    if (mState.unitRange.IsNull())
+    // If the current unitRange is null, we need to set it to the new value
+    if (mUnitRange.IsNull())
     {
-        mState.unitRange.SetNonNull(unitRange.Value());
+        mUnitRange.SetNonNull(unitRange.Value());
         NotifyAttributeChanged(Attributes::UnitRange::Id);
         return CHIP_NO_ERROR;
     }
 
-    // If both the mState unitRange and unitRange are not null, we need to update mState unitRange if the values are different
-    if ((unitRange.Value().min != mState.unitRange.Value().min) || (unitRange.Value().max != mState.unitRange.Value().max))
+    // If both the current unitRange and incoming unitRange are not null, we need to update if the values are different
+    if ((unitRange.Value().min != mUnitRange.Value().min) || (unitRange.Value().max != mUnitRange.Value().max))
     {
-        mState.unitRange.Value().min = unitRange.Value().min;
-        mState.unitRange.Value().max = unitRange.Value().max;
+        mUnitRange.Value().min = unitRange.Value().min;
+        mUnitRange.Value().max = unitRange.Value().max;
         NotifyAttributeChanged(Attributes::UnitRange::Id);
     }
 
@@ -431,7 +440,7 @@ CHIP_ERROR ClosureDimensionCluster::SetUnitRange(const DataModel::Nullable<Struc
 
 CHIP_ERROR ClosureDimensionCluster::SetLimitRange(const Structs::RangePercent100thsStruct::Type & limitRange)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kLimitation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kLimitation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
     // If the limit range is invalid, we need to return an error
     VerifyOrReturnError(limitRange.min <= limitRange.max, CHIP_ERROR_INVALID_ARGUMENT);
@@ -447,10 +456,10 @@ CHIP_ERROR ClosureDimensionCluster::SetLimitRange(const Structs::RangePercent100
         limitRange.max % resolution == 0, CHIP_ERROR_INVALID_ARGUMENT,
         ChipLogError(AppServer, "LimitRange.Max SHALL be equal to an integer multiple of the Resolution attribute."));
 
-    if ((limitRange.min != mState.limitRange.min) || (limitRange.max != mState.limitRange.max))
+    if ((limitRange.min != mLimitRange.min) || (limitRange.max != mLimitRange.max))
     {
-        mState.limitRange.min = limitRange.min;
-        mState.limitRange.max = limitRange.max;
+        mLimitRange.min = limitRange.min;
+        mLimitRange.max = limitRange.max;
         NotifyAttributeChanged(Attributes::LimitRange::Id);
     }
 
@@ -459,28 +468,28 @@ CHIP_ERROR ClosureDimensionCluster::SetLimitRange(const Structs::RangePercent100
 
 CHIP_ERROR ClosureDimensionCluster::SetTranslationDirection(const TranslationDirectionEnum translationDirection)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kTranslation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kTranslation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(translationDirection) != TranslationDirectionEnum::kUnknownEnumValue,
                         CHIP_ERROR_INVALID_ARGUMENT);
 
-    SetAttributeValue(mState.translationDirection, translationDirection, Attributes::TranslationDirection::Id);
+    SetAttributeValue(mTranslationDirection, translationDirection, Attributes::TranslationDirection::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetRotationAxis(const RotationAxisEnum rotationAxis)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(rotationAxis) != RotationAxisEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    SetAttributeValue(mState.rotationAxis, rotationAxis, Attributes::RotationAxis::Id);
+    SetAttributeValue(mRotationAxis, rotationAxis, Attributes::RotationAxis::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetOverflow(const OverflowEnum overflow)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kRotation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(overflow) != OverflowEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
     RotationAxisEnum rotationAxis = GetRotationAxis();
@@ -494,26 +503,26 @@ CHIP_ERROR ClosureDimensionCluster::SetOverflow(const OverflowEnum overflow)
                             CHIP_ERROR_INVALID_ARGUMENT);
     }
 
-    SetAttributeValue(mState.overflow, overflow, Attributes::Overflow::Id);
+    SetAttributeValue(mOverflow, overflow, Attributes::Overflow::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetModulationType(const ModulationTypeEnum modulationType)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kModulation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kModulation), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     VerifyOrReturnError(EnsureKnownEnumValue(modulationType) != ModulationTypeEnum::kUnknownEnumValue, CHIP_ERROR_INVALID_ARGUMENT);
 
-    SetAttributeValue(mState.modulationType, modulationType, Attributes::ModulationType::Id);
+    SetAttributeValue(mModulationType, modulationType, Attributes::ModulationType::Id);
 
     return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR ClosureDimensionCluster::SetLatchControlModes(const BitFlags<LatchControlModesBitmap> & latchControlModes)
 {
-    VerifyOrReturnError(mConformance.HasFeature(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    VerifyOrReturnError(mFeatureMap.Has(Feature::kMotionLatching), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 
-    SetAttributeValue(mState.latchControlModes, latchControlModes, Attributes::LatchControlModes::Id);
+    SetAttributeValue(mLatchControlModes, latchControlModes, Attributes::LatchControlModes::Id);
 
     return CHIP_NO_ERROR;
 }
@@ -537,13 +546,13 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
     }
 
     // If position field is present and Positioning(PS) feature is not supported, we should not set targetState.position value.
-    if (position.HasValue() && mConformance.HasFeature(Feature::kPositioning))
+    if (position.HasValue() && mFeatureMap.Has(Feature::kPositioning))
     {
         VerifyOrReturnError((position.Value() <= kPercents100thsMaxValue), Status::ConstraintError);
 
         // If the Limitation Feature is active, the closure will automatically offset the TargetState.Position value to fit within
         // LimitRange.Min and LimitRange.Max.
-        if (mConformance.HasFeature(Feature::kLimitation))
+        if (mFeatureMap.Has(Feature::kLimitation))
         {
             Structs::RangePercent100thsStruct::Type limitRange = GetLimitRange();
             if (position.Value() > limitRange.max)
@@ -571,12 +580,12 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
     }
 
     // If latch field is present and MotionLatching feature is not supported, we should not set targetState.latch value.
-    if (latch.HasValue() && mConformance.HasFeature(Feature::kMotionLatching))
+    if (latch.HasValue() && mFeatureMap.Has(Feature::kMotionLatching))
     {
         // If latch value is true and the Remote Latching feature is not supported, or
         // if latch value is false and the Remote Unlatching feature is not supported, return InvalidInState.
-        if ((latch.Value() && !mState.latchControlModes.Has(LatchControlModesBitmap::kRemoteLatching)) ||
-            (!latch.Value() && !mState.latchControlModes.Has(LatchControlModesBitmap::kRemoteUnlatching)))
+        if ((latch.Value() && !mLatchControlModes.Has(LatchControlModesBitmap::kRemoteLatching)) ||
+            (!latch.Value() && !mLatchControlModes.Has(LatchControlModesBitmap::kRemoteUnlatching)))
         {
             return Status::InvalidInState;
         }
@@ -585,7 +594,7 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
     }
 
     // If speed field is present and Speed feature is not supported, we should not set targetState.speed value.
-    if (speed.HasValue() && mConformance.HasFeature(Feature::kSpeed))
+    if (speed.HasValue() && mFeatureMap.Has(Feature::kSpeed))
     {
         VerifyOrReturnError(speed.Value() != Globals::ThreeLevelAutoEnum::kUnknownEnumValue, Status::ConstraintError);
         targetState.Value().speed.SetValue(speed.Value());
@@ -594,7 +603,7 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
     // Check if the current position is valid or else return InvalidInState
     DataModel::Nullable<GenericDimensionStateStruct> currentState = GetCurrentState();
     VerifyOrReturnError(!currentState.IsNull(), Status::InvalidInState);
-    if (mConformance.HasFeature(Feature::kPositioning))
+    if (mFeatureMap.Has(Feature::kPositioning))
     {
         VerifyOrReturnError(currentState.Value().position.HasValue() && !currentState.Value().position.Value().IsNull(),
                             Status::InvalidInState);
@@ -602,7 +611,7 @@ Status ClosureDimensionCluster::HandleSetTargetCommand(Optional<Percent100ths> p
 
     // If this command requests a position change while the Latch field of the CurrentState is True (Latched), and the Latch field
     // of this command is not set to False (Unlatched), a status code of INVALID_IN_STATE SHALL be returned.
-    if (mConformance.HasFeature(Feature::kMotionLatching))
+    if (mFeatureMap.Has(Feature::kMotionLatching))
     {
         if (position.HasValue() && currentState.Value().latch.HasValue() && !currentState.Value().latch.Value().IsNull() &&
             currentState.Value().latch.Value().Value())
@@ -640,7 +649,7 @@ Status ClosureDimensionCluster::HandleStepCommand(StepDirectionEnum direction, u
     }
 
     // If speed field is present and Speed feature is not supported, we should not set stepTarget.speed value.
-    if (speed.HasValue() && mConformance.HasFeature(Feature::kSpeed))
+    if (speed.HasValue() && mFeatureMap.Has(Feature::kSpeed))
     {
         VerifyOrReturnError(speed.Value() != Globals::ThreeLevelAutoEnum::kUnknownEnumValue, Status::ConstraintError);
         stepTarget.Value().speed.SetValue(speed.Value());
@@ -655,7 +664,7 @@ Status ClosureDimensionCluster::HandleStepCommand(StepDirectionEnum direction, u
     VerifyOrReturnError(currentState.Value().position.HasValue() && !currentState.Value().position.Value().IsNull(),
                         Status::InvalidInState);
 
-    if (mConformance.HasFeature(Feature::kMotionLatching))
+    if (mFeatureMap.Has(Feature::kMotionLatching))
     {
         if (currentState.Value().latch.HasValue() && !currentState.Value().latch.Value().IsNull())
         {
@@ -678,7 +687,7 @@ Status ClosureDimensionCluster::HandleStepCommand(StepDirectionEnum direction, u
     uint32_t newPosition = 0;
 
     // check if closure supports Limitation feature, if yes fetch the LimitRange values
-    bool limitSupported = mConformance.HasFeature(Feature::kLimitation) ? true : false;
+    bool limitSupported = mFeatureMap.Has(Feature::kLimitation) ? true : false;
 
     Structs::RangePercent100thsStruct::Type limitRange;
 

@@ -46,8 +46,43 @@ CHIP_ERROR Interface::Init(ClusterConformance & conformance, ClusterInitParamete
 
 CHIP_ERROR Interface::Init()
 {
-    ClosureDimensionCluster::Context context{ mDelegate, mConformance, mInitParams };
-    mCluster.Create(mEndpoint, context);
+    ClosureDimensionCluster::Config config(mEndpoint, mDelegate);
+
+    if (mConformance.HasFeature(Feature::kPositioning))
+    {
+        // Use default resolution=1, stepValue=1; the app can override via SetResolution/SetStepValue after Init
+        config.WithPositioning(1, 1);
+    }
+    if (mConformance.HasFeature(Feature::kMotionLatching))
+    {
+        config.WithMotionLatching(BitFlags<LatchControlModesBitmap>());
+    }
+    if (mConformance.HasFeature(Feature::kUnit))
+    {
+        config.WithUnit(ClosureUnitEnum::kUnknownEnumValue, DataModel::Nullable<Structs::UnitRangeStruct::Type>());
+    }
+    if (mConformance.HasFeature(Feature::kLimitation))
+    {
+        config.WithLimitation(Structs::RangePercent100thsStruct::Type{});
+    }
+    if (mConformance.HasFeature(Feature::kSpeed))
+    {
+        config.WithSpeed();
+    }
+    if (mConformance.HasFeature(Feature::kTranslation))
+    {
+        config.WithTranslation(mInitParams.translationDirection);
+    }
+    if (mConformance.HasFeature(Feature::kRotation))
+    {
+        config.WithRotation(mInitParams.rotationAxis, OverflowEnum::kUnknownEnumValue);
+    }
+    if (mConformance.HasFeature(Feature::kModulation))
+    {
+        config.WithModulation(mInitParams.modulationType);
+    }
+
+    mCluster.Create(config);
     return CodegenDataModelProvider::Instance().Registry().Register(mCluster.Registration());
 }
 

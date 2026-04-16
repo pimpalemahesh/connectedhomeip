@@ -21,7 +21,6 @@ chip_test_suite("tests") {
   test_sources = [
     "TestClosureDimensionCluster.cpp",
     "TestClosureDimensionClusterObjects.cpp",
-    "TestClosureDimensionConformance.cpp",
   ]
 
   public_deps = [

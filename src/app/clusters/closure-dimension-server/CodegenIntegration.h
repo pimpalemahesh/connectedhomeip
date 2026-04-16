@@ -27,6 +27,79 @@ namespace app {
 namespace Clusters {
 namespace ClosureDimension {
 
+/**
+ * @brief Structure is used to configure and validate the Cluster configuration.
+ *        Validates if the feature map, attributes and commands configuration is valid.
+ */
+struct ClusterConformance
+{
+    BitFlags<Feature> & FeatureMap() { return mFeatureMap; }
+    const BitFlags<Feature> & FeatureMap() const { return mFeatureMap; }
+
+    inline bool HasFeature(Feature aFeature) const { return mFeatureMap.Has(aFeature); }
+
+    /**
+     * @brief Function determines if Cluster conformance is valid
+     *
+     *        The function executes these checks in order to validate the conformance
+     *        1. Check if either Positioning or MotionLatching is supported. If neither are enabled, returns false.
+     *        2. If Unit, Limitation or speed is enabled, Positioning must be enabled. Return false otherwise.
+     *        3. If Translation, Rotation or Modulation is enabled, Positioning must be enabled. Return false otherwise.
+     *        4. Only one of Translation, Rotation or Modulation must be enabled. Return false otherwise.
+     *        5. If the Overflow attribute is supported, at least one of Rotation or MotionLatching feature must be supported.
+     *            Return false otherwise.
+     *        6. If Rotation feature is enabled, then the Overflow attribute must be supported. Return false otherwise.
+     *
+     * @return true, the cluster confirmance is valid
+     *         false, otherwise
+     */
+    bool IsValid() const
+    {
+        // Positioning or Matching must be enabled
+        VerifyOrReturnValue(HasFeature(Feature::kPositioning) || HasFeature(Feature::kMotionLatching), false,
+                            ChipLogError(AppServer, "Validation failed: Neither Positioning nor MotionLatching is enabled."));
+
+        // If Unit, Limitation or speed is enabled, Positioning must be enabled
+        if (HasFeature(Feature::kUnit) || HasFeature(Feature::kLimitation) || HasFeature(Feature::kSpeed))
+        {
+            VerifyOrReturnValue(
+                HasFeature(Feature::kPositioning), false,
+                ChipLogError(AppServer, "Validation failed: Unit, Limitation, and speed requires the Positioning feature."));
+        }
+
+        // If Translation, Rotation or Modulation is enabled, Positioning must be enabled.
+        if (HasFeature(Feature::kTranslation) || HasFeature(Feature::kRotation) || HasFeature(Feature::kModulation))
+        {
+            VerifyOrReturnValue(
+                HasFeature(Feature::kPositioning), false,
+                ChipLogError(AppServer, "Validation failed: Translation, Rotation or Modulation requires Positioning enabled."));
+        }
+
+        // Only one of Translation, Rotation or Modulation features must be enabled. Return false otherwise.
+        if ((HasFeature(Feature::kTranslation) && HasFeature(Feature::kRotation)) ||
+            (HasFeature(Feature::kRotation) && HasFeature(Feature::kModulation)) ||
+            (HasFeature(Feature::kModulation) && HasFeature(Feature::kTranslation)))
+        {
+            ChipLogError(AppServer, "Validation failed: Only one of Translation, Rotation or Modulation feature can be enabled.");
+            return false;
+        }
+        return true;
+    }
+
+private:
+    BitFlags<Feature> mFeatureMap;
+};
+
+/**
+ * @brief Struct to store the cluster Initilization parameters
+ */
+struct ClusterInitParameters
+{
+    TranslationDirectionEnum translationDirection = TranslationDirectionEnum::kUnknownEnumValue;
+    RotationAxisEnum rotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
+    ModulationTypeEnum modulationType             = ModulationTypeEnum::kUnknownEnumValue;
+};
+
 class Interface
 {
 public:

@@ -30,109 +30,80 @@ namespace app {
 namespace Clusters {
 namespace ClosureDimension {
 
-/**
- * @brief Structure is used to configure and validate the Cluster configuration.
- *        Validates if the feature map, attributes and commands configuration is valid.
- */
-struct ClusterConformance
-{
-    BitFlags<Feature> & FeatureMap() { return mFeatureMap; }
-    const BitFlags<Feature> & FeatureMap() const { return mFeatureMap; }
-
-    inline bool HasFeature(Feature aFeature) const { return mFeatureMap.Has(aFeature); }
-
-    /**
-     * @brief Function determines if Cluster conformance is valid
-     *
-     *        The function executes these checks in order to validate the conformance
-     *        1. Check if either Positioning or MotionLatching is supported. If neither are enabled, returns false.
-     *        2. If Unit, Limitation or speed is enabled, Positioning must be enabled. Return false otherwise.
-     *        3. If Translation, Rotation or Modulation is enabled, Positioning must be enabled. Return false otherwise.
-     *        4. Only one of Translation, Rotation or Modulation must be enabled. Return false otherwise.
-     *        5. If the Overflow attribute is supported, at least one of Rotation or MotionLatching feature must be supported.
-     *            Return false otherwise.
-     *        6. If Rotation feature is enabled, then the Overflow attribute must be supported. Return false otherwise.
-     *
-     * @return true, the cluster confirmance is valid
-     *         false, otherwise
-     */
-    bool IsValid() const
-    {
-        // Positioning or Matching must be enabled
-        VerifyOrReturnValue(HasFeature(Feature::kPositioning) || HasFeature(Feature::kMotionLatching), false,
-                            ChipLogError(AppServer, "Validation failed: Neither Positioning nor MotionLatching is enabled."));
-
-        // If Unit, Limitation or speed is enabled, Positioning must be enabled
-        if (HasFeature(Feature::kUnit) || HasFeature(Feature::kLimitation) || HasFeature(Feature::kSpeed))
-        {
-            VerifyOrReturnValue(
-                HasFeature(Feature::kPositioning), false,
-                ChipLogError(AppServer, "Validation failed: Unit, Limitation, and speed requires the Positioning feature."));
-        }
-
-        // If Translation, Rotation or Modulation is enabled, Positioning must be enabled.
-        if (HasFeature(Feature::kTranslation) || HasFeature(Feature::kRotation) || HasFeature(Feature::kModulation))
-        {
-            VerifyOrReturnValue(
-                HasFeature(Feature::kPositioning), false,
-                ChipLogError(AppServer, "Validation failed: Translation, Rotation or Modulation requires Positioning enabled."));
-        }
-
-        // Only one of Translation, Rotation or Modulation features must be enabled. Return false otherwise.
-        if ((HasFeature(Feature::kTranslation) && HasFeature(Feature::kRotation)) ||
-            (HasFeature(Feature::kRotation) && HasFeature(Feature::kModulation)) ||
-            (HasFeature(Feature::kModulation) && HasFeature(Feature::kTranslation)))
-        {
-            ChipLogError(AppServer, "Validation failed: Only one of Translation, Rotation or Modulation feature can be enabled.");
-            return false;
-        }
-        return true;
-    }
-
-private:
-    BitFlags<Feature> mFeatureMap;
-};
-
-/**
- * @brief Struct to store the cluster Initilization parameters
- */
-struct ClusterInitParameters
-{
-    TranslationDirectionEnum translationDirection = TranslationDirectionEnum::kUnknownEnumValue;
-    RotationAxisEnum rotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
-    ModulationTypeEnum modulationType             = ModulationTypeEnum::kUnknownEnumValue;
-};
-
-/**
- * @brief Struct to store the current cluster state
- */
-struct ClusterState
-{
-    DataModel::Nullable<GenericDimensionStateStruct> currentState{ DataModel::NullNullable };
-    DataModel::Nullable<GenericDimensionStateStruct> targetState{ DataModel::NullNullable };
-    Percent100ths resolution                                      = 1;
-    Percent100ths stepValue                                       = 1;
-    ClosureUnitEnum unit                                          = ClosureUnitEnum::kUnknownEnumValue;
-    DataModel::Nullable<Structs::UnitRangeStruct::Type> unitRange = DataModel::Nullable<Structs::UnitRangeStruct::Type>();
-    Structs::RangePercent100thsStruct::Type limitRange{};
-    TranslationDirectionEnum translationDirection = TranslationDirectionEnum::kUnknownEnumValue;
-    RotationAxisEnum rotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
-    OverflowEnum overflow                         = OverflowEnum::kUnknownEnumValue;
-    ModulationTypeEnum modulationType             = ModulationTypeEnum::kUnknownEnumValue;
-    BitFlags<LatchControlModesBitmap> latchControlModes;
-};
-
 class ClosureDimensionCluster : public DefaultServerCluster
 {
 public:
-    struct Context
+    struct Config
     {
-        ClosureDimensionClusterDelegate & delegate;
-        const ClusterConformance & conformance;
-        const ClusterInitParameters & initParams;
+        Config(EndpointId endpoint, ClosureDimensionClusterDelegate & delegate) : mEndpointId(endpoint), mDelegate(delegate) {}
+
+        Config & WithPositioning(Percent100ths resolution, Percent100ths stepValue)
+        {
+            mFeatureMap.Set(Feature::kPositioning);
+            mResolution = resolution;
+            mStepValue  = stepValue;
+            return *this;
+        }
+        Config & WithMotionLatching(BitFlags<LatchControlModesBitmap> latchControlModes)
+        {
+            mFeatureMap.Set(Feature::kMotionLatching);
+            mLatchControlModes = latchControlModes;
+            return *this;
+        }
+        Config & WithUnit(ClosureUnitEnum unit, DataModel::Nullable<Structs::UnitRangeStruct::Type> unitRange)
+        {
+            mFeatureMap.Set(Feature::kUnit);
+            mUnit      = unit;
+            mUnitRange = unitRange;
+            return *this;
+        }
+        Config & WithLimitation(Structs::RangePercent100thsStruct::Type limitRange)
+        {
+            mFeatureMap.Set(Feature::kLimitation);
+            mLimitRange = limitRange;
+            return *this;
+        }
+        Config & WithSpeed()
+        {
+            mFeatureMap.Set(Feature::kSpeed);
+            return *this;
+        }
+        Config & WithTranslation(TranslationDirectionEnum translationDirection)
+        {
+            mFeatureMap.Set(Feature::kTranslation);
+            mTranslationDirection = translationDirection;
+            return *this;
+        }
+        Config & WithRotation(RotationAxisEnum rotationAxis, OverflowEnum overflow)
+        {
+            mFeatureMap.Set(Feature::kRotation);
+            mRotationAxis = rotationAxis;
+            mOverflow     = overflow;
+            return *this;
+        }
+        Config & WithModulation(ModulationTypeEnum modulationType)
+        {
+            mFeatureMap.Set(Feature::kModulation);
+            mModulationType = modulationType;
+            return *this;
+        }
+
+        EndpointId mEndpointId;
+        ClosureDimensionClusterDelegate & mDelegate;
+        BitMask<Feature> mFeatureMap;
+        Percent100ths mResolution                                      = 1;
+        Percent100ths mStepValue                                       = 1;
+        ClosureUnitEnum mUnit                                          = ClosureUnitEnum::kUnknownEnumValue;
+        DataModel::Nullable<Structs::UnitRangeStruct::Type> mUnitRange = DataModel::Nullable<Structs::UnitRangeStruct::Type>();
+        Structs::RangePercent100thsStruct::Type mLimitRange{};
+        TranslationDirectionEnum mTranslationDirection = TranslationDirectionEnum::kUnknownEnumValue;
+        RotationAxisEnum mRotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
+        OverflowEnum mOverflow                         = OverflowEnum::kUnknownEnumValue;
+        ModulationTypeEnum mModulationType             = ModulationTypeEnum::kUnknownEnumValue;
+        BitFlags<LatchControlModesBitmap> mLatchControlModes;
     };
 
-    ClosureDimensionCluster(EndpointId endpoint, const Context & context);
+    ClosureDimensionCluster(const Config & config);
     ~ClosureDimensionCluster();
 
     CHIP_ERROR Attributes(const ConcreteClusterPath & path, ReadOnlyBufferBuilder<DataModel::AttributeEntry> & builder) override;
@@ -256,21 +227,36 @@ public:
     // All Get functions:
     // Return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE if the attribute is not supported.
     // Otherwise return CHIP_NO_ERROR and set the input parameter value to the current cluster state value
-    DataModel::Nullable<GenericDimensionStateStruct> GetCurrentState() const { return mState.currentState; }
-    DataModel::Nullable<GenericDimensionStateStruct> GetTargetState() const { return mState.targetState; }
-    Percent100ths GetResolution() const { return mState.resolution; }
-    Percent100ths GetStepValue() const { return mState.stepValue; }
-    ClosureUnitEnum GetUnit() const { return mState.unit; }
-    DataModel::Nullable<Structs::UnitRangeStruct::Type> GetUnitRange() const { return mState.unitRange; }
-    Structs::RangePercent100thsStruct::Type GetLimitRange() const { return mState.limitRange; }
-    TranslationDirectionEnum GetTranslationDirection() const { return mState.translationDirection; }
-    RotationAxisEnum GetRotationAxis() const { return mState.rotationAxis; }
-    OverflowEnum GetOverflow() const { return mState.overflow; }
-    ModulationTypeEnum GetModulationType() const { return mState.modulationType; }
-    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const { return mState.latchControlModes; }
-    BitFlags<Feature> GetFeatureMap() const { return mConformance.FeatureMap(); }
+    DataModel::Nullable<GenericDimensionStateStruct> GetCurrentState() const { return mCurrentState; }
+    DataModel::Nullable<GenericDimensionStateStruct> GetTargetState() const { return mTargetState; }
+    Percent100ths GetResolution() const { return mResolution; }
+    Percent100ths GetStepValue() const { return mStepValue; }
+    ClosureUnitEnum GetUnit() const { return mUnit; }
+    DataModel::Nullable<Structs::UnitRangeStruct::Type> GetUnitRange() const { return mUnitRange; }
+    Structs::RangePercent100thsStruct::Type GetLimitRange() const { return mLimitRange; }
+    TranslationDirectionEnum GetTranslationDirection() const { return mTranslationDirection; }
+    RotationAxisEnum GetRotationAxis() const { return mRotationAxis; }
+    OverflowEnum GetOverflow() const { return mOverflow; }
+    ModulationTypeEnum GetModulationType() const { return mModulationType; }
+    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const { return mLatchControlModes; }
+    BitFlags<Feature> GetFeatureMap() const { return mFeatureMap; }
 
 private:
+    ClosureDimensionClusterDelegate & mDelegate;
+    DataModel::Nullable<GenericDimensionStateStruct> mCurrentState{ DataModel::NullNullable };
+    DataModel::Nullable<GenericDimensionStateStruct> mTargetState{ DataModel::NullNullable };
+    Percent100ths mResolution                                      = 1;
+    Percent100ths mStepValue                                       = 1;
+    ClosureUnitEnum mUnit                                          = ClosureUnitEnum::kUnknownEnumValue;
+    DataModel::Nullable<Structs::UnitRangeStruct::Type> mUnitRange = DataModel::Nullable<Structs::UnitRangeStruct::Type>();
+    Structs::RangePercent100thsStruct::Type mLimitRange{};
+    TranslationDirectionEnum mTranslationDirection = TranslationDirectionEnum::kUnknownEnumValue;
+    RotationAxisEnum mRotationAxis                 = RotationAxisEnum::kUnknownEnumValue;
+    OverflowEnum mOverflow                         = OverflowEnum::kUnknownEnumValue;
+    ModulationTypeEnum mModulationType             = ModulationTypeEnum::kUnknownEnumValue;
+    BitFlags<LatchControlModesBitmap> mLatchControlModes;
+    BitMask<Feature> mFeatureMap = BitMask<Feature>(0);
+
     /**
      *  @brief Calls delegate HandleSetTarget function after validating the parameters and conformance.
      *
@@ -347,10 +333,6 @@ private:
      *
      */
     CHIP_ERROR SetModulationType(const ModulationTypeEnum modulationType);
-
-    ClosureDimensionClusterDelegate & mDelegate;
-    ClusterConformance mConformance;
-    ClusterState mState;
 
     // At Present, QuieterReportingAttribute doesnt support Structs.
     // So, this variable will be used for Quietreporting of current state position.

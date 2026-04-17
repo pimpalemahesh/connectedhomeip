@@ -9,13 +9,13 @@ the operational state of closure devices.
 This directory contains a code-driven C++ implementation of the Matter Closure
 Control cluster server. The public surface is split into two layers:
 
-- `ClosureControlCluster` (see `ClosureControlCluster.h`) — the cluster
-  implementation. It is configured via a builder-style `Config` object that
-  selects features, optional attributes, and initial state.
-- `Interface` (see `CodegenIntegration.h`) — owns the lifecycle of a
-  `ClosureControlCluster` instance and registers it with the
-  `CodegenDataModelProvider`. `Interface` is the entry point applications use
-  to stand up a cluster on an endpoint.
+-   `ClosureControlCluster` (see `ClosureControlCluster.h`) — the cluster
+    implementation. It is configured via a builder-style `Config` object that
+    selects features, optional attributes, and initial state.
+-   `Interface` (see `CodegenIntegration.h`) — owns the lifecycle of a
+    `ClosureControlCluster` instance and registers it with the
+    `CodegenDataModelProvider`. `Interface` is the entry point applications use
+    to stand up a cluster on an endpoint.
 
 It uses a delegate pattern
 (`chip::app::Clusters::ClosureControl::ClosureControlClusterDelegate`) to
@@ -75,8 +75,7 @@ command handlers and event generators.
 
 ### 3. Shut down when done
 
-Call `Interface::Shutdown()` to unregister the cluster and destroy the
-instance.
+Call `Interface::Shutdown()` to unregister the cluster and destroy the instance.
 
 ```cpp
 gInterface.Shutdown();
@@ -84,8 +83,8 @@ gInterface.Shutdown();
 
 ## Constructing a cluster directly (for tests)
 
-Tests and advanced integrations can construct `ClosureControlCluster`
-directly via the `Config` builder:
+Tests and advanced integrations can construct `ClosureControlCluster` directly
+via the `Config` builder:
 
 ```cpp
 ClosureControlCluster cluster(
@@ -100,19 +99,19 @@ ClosureControlCluster cluster(
 
 The available builder methods mirror the cluster features:
 
-- `WithPositioning()`, `WithInstantaneous()`, `WithSpeed()`, `WithVentilation()`,
-  `WithPedestrian()`, `WithCalibration()`, `WithProtection()`,
-  `WithManuallyOperable()`
-- `WithMotionLatching(latchControlModes)` — enables MotionLatching and
-  fixes the value of the `LatchControlModes` attribute (Fixed quality)
-- `WithCountdownTime(initial = null)` — toggles the optional
-  `CountdownTime` attribute and sets its initial value
-- `WithInitialMainState(...)`, `WithInitialOverallCurrentState(...)` —
-  initial state
+-   `WithPositioning()`, `WithInstantaneous()`, `WithSpeed()`,
+    `WithVentilation()`, `WithPedestrian()`, `WithCalibration()`,
+    `WithProtection()`, `WithManuallyOperable()`
+-   `WithMotionLatching(latchControlModes)` — enables MotionLatching and fixes
+    the value of the `LatchControlModes` attribute (Fixed quality)
+-   `WithCountdownTime(initial = null)` — toggles the optional `CountdownTime`
+    attribute and sets its initial value
+-   `WithInitialMainState(...)`, `WithInitialOverallCurrentState(...)` — initial
+    state
 
 ## Conformance Validation
 
-`ClosureControlCluster`'s constructor validates feature combinations and
-aborts via `VerifyOrDie` on invalid configurations. `Interface::Init()` also
-runs `ClusterConformance::IsValid()` before creating the cluster and returns
+`ClosureControlCluster`'s constructor validates feature combinations and aborts
+via `VerifyOrDie` on invalid configurations. `Interface::Init()` also runs
+`ClusterConformance::IsValid()` before creating the cluster and returns
 `CHIP_ERROR_INCORRECT_STATE` if the configuration is invalid.

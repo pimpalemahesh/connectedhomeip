@@ -42,7 +42,7 @@ public:
 
     inline bool HasFeature(Feature aFeature) const { return mFeatureMap.Has(aFeature); }
 
-    private:
+private:
     BitFlags<Feature> mFeatureMap;
     OptionalAttributesSet mOptionalAttributes;
 };

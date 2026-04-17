@@ -263,7 +263,8 @@ TEST_F(TestClosureControlCluster, TestReadFeatureMap)
 
 TEST_F(TestClosureControlCluster, TestCalibrationFeatureMapAndAcceptedCommands)
 {
-    ClosureControlCluster calibrateCluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    ClosureControlCluster calibrateCluster(
+        Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
     ClusterTester tester(calibrateCluster);
     BitFlags<Feature> featureMap;
     EXPECT_EQ(tester.ReadAttribute(Attributes::FeatureMap::Id, featureMap), CHIP_NO_ERROR);
@@ -327,8 +328,7 @@ TEST_F(TestClosureControlCluster, TestSetMainStateUpdatesCountdownTime)
     mockDelegate.calibrationCountdownTime      = 33;
     mockDelegate.movingCountdownTime           = 22;
     mockDelegate.waitingForMotionCountdownTime = 11;
-    ClosureControlCluster cluster(
-        Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
 
     EXPECT_EQ(cluster.SetMainState(MainStateEnum::kMoving), CHIP_NO_ERROR);
     DataModel::Nullable<ElapsedS> countdownTime = cluster.GetCountdownTime();
@@ -439,8 +439,7 @@ TEST_F(TestClosureControlCluster, TestHandleCalibrate)
     ClosureControlCluster positioningCluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning());
     EXPECT_EQ(positioningCluster.HandleCalibrate(), Status::UnsupportedCommand);
 
-    ClosureControlCluster cluster(
-        Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
     EXPECT_EQ(cluster.SetMainState(MainStateEnum::kMoving), CHIP_NO_ERROR);
     EXPECT_EQ(mockDelegate.GetMainStateChangedCalled(), true);
     EXPECT_EQ(mockDelegate.GetMainStateValue(), cluster.GetMainState());
@@ -464,8 +463,7 @@ TEST_F(TestClosureControlCluster, TestHandleCalibrate)
 TEST_F(TestClosureControlCluster, TestHandleCalibrateDelegateFailure)
 {
     mockDelegate.calibrateCommandStatus = Status::Busy;
-    ClosureControlCluster cluster(
-        Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
 
     EXPECT_EQ(cluster.SetMainState(MainStateEnum::kStopped), CHIP_NO_ERROR);
     EXPECT_EQ(cluster.HandleCalibrate(), Status::Busy);
@@ -474,8 +472,7 @@ TEST_F(TestClosureControlCluster, TestHandleCalibrateDelegateFailure)
 
 TEST_F(TestClosureControlCluster, TestHandleStop)
 {
-    ClosureControlCluster cluster(
-        Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
 
     EXPECT_EQ(cluster.SetMainState(MainStateEnum::kMoving), CHIP_NO_ERROR);
     EXPECT_EQ(mockDelegate.GetMainStateChangedCalled(), true);

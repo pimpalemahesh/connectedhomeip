@@ -467,9 +467,9 @@ CHIP_ERROR ClosureControlCluster::AddErrorToCurrentErrorList(ClosureErrorEnum er
         VerifyOrReturnError(mCurrentErrorList[i] != error, CHIP_ERROR_DUPLICATE_MESSAGE_RECEIVED,
                             ChipLogError(AppServer, "Error already exists in the list"));
     }
-    VerifyOrReturnError(mDelegate.OnCurrentErrorListChanged(
-                            DataModel::List<const ClosureErrorEnum>(mCurrentErrorList, mCurrentErrorCount)),
-                        CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrReturnError(
+        mDelegate.OnCurrentErrorListChanged(DataModel::List<const ClosureErrorEnum>(mCurrentErrorList, mCurrentErrorCount)),
+        CHIP_ERROR_INCORRECT_STATE);
     mCurrentErrorList[mCurrentErrorCount++] = error;
     DataModel::List<const ClosureErrorEnum> currentErrorList(mCurrentErrorList, mCurrentErrorCount);
     NotifyAttributeChanged(Attributes::CurrentErrorList::Id);
@@ -479,8 +479,8 @@ CHIP_ERROR ClosureControlCluster::AddErrorToCurrentErrorList(ClosureErrorEnum er
 void ClosureControlCluster::ClearCurrentErrorList()
 {
     assertChipStackLockedByCurrentThread();
-    VerifyOrReturn(mDelegate.OnCurrentErrorListChanged(
-        DataModel::List<const ClosureErrorEnum>(mCurrentErrorList, mCurrentErrorCount)));
+    VerifyOrReturn(
+        mDelegate.OnCurrentErrorListChanged(DataModel::List<const ClosureErrorEnum>(mCurrentErrorList, mCurrentErrorCount)));
     // Clearing the error list array by setting all elements to kUnknownEnumValue
     for (size_t i = 0; i < mCurrentErrorCount; ++i)
     {

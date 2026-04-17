@@ -7,18 +7,21 @@ the operational state of closure devices.
 ## Overview
 
 This directory contains a code-driven C++ implementation of the Matter Closure
-Control cluster server. This implementation (`ClosureControlCluster.h`) is
-designed for flexibility, avoiding the tight coupling present in older
-codegen-based implementations.
+Control cluster server. The public surface is split into two layers:
+
+- `ClosureControlCluster` (see `ClosureControlCluster.h`) — the cluster
+  implementation. It is configured via a builder-style `Config` object that
+  selects features, optional attributes, and initial state.
+- `Interface` (see `CodegenIntegration.h`) — owns the lifecycle of a
+  `ClosureControlCluster` instance and registers it with the
+  `CodegenDataModelProvider`. `Interface` is the entry point applications use
+  to stand up a cluster on an endpoint.
 
 It uses a delegate pattern
 (`chip::app::Clusters::ClosureControl::ClosureControlClusterDelegate`) to
 interact with the application's closure control logic and state management.
 
 ## Usage
-
-To integrate the `ClosureControlCluster` into your application, follow these
-steps:
 
 ### 1. Implement the Delegate
 
@@ -35,133 +38,81 @@ class MyClosureControlDelegate : public chip::app::Clusters::ClosureControl::Clo
 };
 ```
 
-### 2. Configure Cluster Conformance
+### 2. Create an Interface and configure it
 
-Configure the cluster's feature map and optional attributes based on your device
-capabilities. The conformance must be valid before cluster creation (see
-"Conformance Validation" below).
-
-```cpp
-#include "app/clusters/closure-control-server/ClosureControlCluster.h"
-
-chip::app::Clusters::ClosureControl::ClusterConformance conformance;
-conformance.FeatureMap().Set(chip::app::Clusters::ClosureControl::Feature::kPositioning);
-conformance.FeatureMap().Set(chip::app::Clusters::ClosureControl::Feature::kCalibration);
-// Add other features as needed
-
-// Optional: Configure initial state
-chip::app::Clusters::ClosureControl::ClusterInitParameters initParams;
-initParams.mMainState = chip::app::Clusters::ClosureControl::MainStateEnum::kStopped;
-```
-
-### 3. Instantiate Delegates and Cluster
-
-Instantiate your delegate and the `ClosureControlCluster` itself for each
-endpoint that requires it. Using `RegisteredServerCluster` simplifies
-registration.
+`Interface` is constructed with an endpoint and a delegate. Configure the
+cluster conformance and initial state, then call `Init` twice — once to stage
+the configuration and once to create and register the underlying cluster.
 
 ```cpp
-#include "app/server-cluster/ServerClusterInterfaceRegistry.h"
-#include "lib/support/DefaultTimerDelegate.h"
+#include "app/clusters/closure-control-server/CodegenIntegration.h"
 
-// In a .cpp file
-MyClosureControlDelegate gMyDelegate;
-chip::support::DefaultTimerDelegate gTimerDelegate;
+using namespace chip::app::Clusters::ClosureControl;
 
-chip::app::Clusters::ClosureControl::ClosureControlCluster::Context clusterContext{
-    .delegate = gMyDelegate,
-    .timerDelegate = gTimerDelegate,
-    .conformance = conformance,
-    .initParams = initParams
-};
+MyClosureControlDelegate gDelegate;
+Interface gInterface(/* endpoint */ 1, gDelegate);
 
-chip::app::RegisteredServerCluster<chip::app::Clusters::ClosureControl::ClosureControlCluster> gClosureControlCluster(
-    chip::EndpointId{ 1 }, clusterContext);
-```
-
-### 4. Register the Cluster
-
-In your application's initialization sequence, register the cluster instance
-with the `CodegenDataModelProvider`. This hooks the cluster into the Matter data
-model and message processing framework.
-
-```cpp
-#include "data-model-providers/codegen/CodegenDataModelProvider.h"
-
-void ApplicationInit()
+CHIP_ERROR InitClosureControl()
 {
-    // ... other initializations
+    ClusterConformance conformance;
+    conformance.FeatureMap()
+        .Set(Feature::kPositioning)
+        .Set(Feature::kCalibration);
+    conformance.OptionalAttributes().Set<Attributes::CountdownTime::Id>();
 
-    // Register cluster BEFORE server starts
-    CHIP_ERROR err = chip::app::CodegenDataModelProvider::Instance().Registry().Register(
-        gClosureControlCluster.Registration());
-    VerifyOrDie(err == CHIP_NO_ERROR);
+    ClusterInitParameters initParams;
+    initParams.mMainState = MainStateEnum::kStopped;
 
-    // ... server startup happens later
+    ReturnErrorOnFailure(gInterface.Init(conformance, initParams));
+    ReturnErrorOnFailure(gInterface.Init());
+    return CHIP_NO_ERROR;
 }
 ```
 
-## Initialization Sequence
+After the second `Init()` call, `gInterface.Cluster()` returns a reference to
+the underlying `ClosureControlCluster`, which exposes all setters, getters,
+command handlers and event generators.
 
-### Code-Driven Cluster Usage (Recommended)
+### 3. Shut down when done
 
-For new applications using the code-driven cluster pattern:
+Call `Interface::Shutdown()` to unregister the cluster and destroy the
+instance.
 
-1. **Before Server Startup:**
+```cpp
+gInterface.Shutdown();
+```
 
-    - Configure `ClusterConformance` with valid feature map
-    - Configure `ClusterInitParameters` with initial state
-    - Instantiate delegate and cluster
-    - Register cluster with `CodegenDataModelProvider`
+## Constructing a cluster directly (for tests)
 
-2. **After Startup:**
-    - All getter/setter methods are safe to use via Cluster Instance
+Tests and advanced integrations can construct `ClosureControlCluster`
+directly via the `Config` builder:
 
-### Legacy API Usage
+```cpp
+ClosureControlCluster cluster(
+    ClosureControlCluster::Config(endpointId, delegate, timerDelegate)
+        .WithPositioning()
+        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()
+                                .Set(LatchControlModesBitmap::kRemoteLatching)
+                                .Set(LatchControlModesBitmap::kRemoteUnlatching))
+        .WithCountdownTime()
+        .WithInitialMainState(MainStateEnum::kStopped));
+```
 
-For backwards compatibility with applications using the legacy ZAP-generated
-patterns:
+The available builder methods mirror the cluster features:
 
-1. **Before Server Startup:**
-
-    ```cpp
-    // Set delegate (must be called before server starts)
-    MatterClosureControlSetDelegate(endpointId, delegate);
-
-    // Set conformance (must be called before server starts)
-    MatterClosureControlSetConformance(endpointId, conformance);
-
-    // Set init parameters (must be called before server starts)
-    MatterClosureControlSetInitParams(endpointId, initParams);
-    ```
-
-2. **After Startup:**
-    ```cpp
-    // Access cluster instance
-    ClosureControlCluster * cluster = GetInstance(endpointId);
-    // Use cluster methods...
-    ```
-
-**Critical:** For legacy usage, ensure `MatterClosureControlSetDelegate()`,
-`MatterClosureControlSetConformance()`, and
-`MatterClosureControlSetInitParams()` are called **before** `ServerInit()`. The
-`GetInstance()` should be called after the Server Created. The cluster instance
-**must not** be used before `ServerInit()` is called. Accessing the cluster
-before initialization (e.g., wrong app init order) may result in reading
-uninitialized state. Ensure your application initialization order is correct.
+- `WithPositioning()`, `WithInstantaneous()`, `WithSpeed()`, `WithVentilation()`,
+  `WithPedestrian()`, `WithCalibration()`, `WithProtection()`,
+  `WithManuallyOperable()`
+- `WithMotionLatching(latchControlModes)` — enables MotionLatching and
+  fixes the value of the `LatchControlModes` attribute (Fixed quality)
+- `WithCountdownTime(initial = null)` — toggles the optional
+  `CountdownTime` attribute and sets its initial value
+- `WithInitialMainState(...)`, `WithInitialOverallCurrentState(...)` —
+  initial state
 
 ## Conformance Validation
 
-The cluster performs strict conformance validation during construction. **Any
-validation failure is fatal** and will terminate the application with "Invalid
-Conformance" message
-
-### Migrating from the Legacy API
-
-We recommend migrating to the new, direct instantiation method to improve
-performance and reduce your application's footprint.
-
-#### Recommended Usage
-
-The new approach is to instantiate the cluster directly and register it with the
-`CodegenDataModelProvider`, as detailed in the "Usage" section above.
+`ClosureControlCluster`'s constructor validates feature combinations and
+aborts via `VerifyOrDie` on invalid configurations. `Interface::Init()` also
+runs `ClusterConformance::IsValid()` before creating the cluster and returns
+`CHIP_ERROR_INCORRECT_STATE` if the configuration is invalid.

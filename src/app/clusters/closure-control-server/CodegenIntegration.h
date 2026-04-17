@@ -20,19 +20,95 @@
 
 #include <app/clusters/closure-control-server/ClosureControlCluster.h>
 #include <app/clusters/closure-control-server/ClosureControlClusterDelegate.h>
+#include <app/server-cluster/ServerClusterInterfaceRegistry.h>
 
 namespace chip {
 namespace app {
 namespace Clusters {
 namespace ClosureControl {
 
-ClosureControlCluster * GetInstance(EndpointId endpointId);
+/**
+ * @brief Structure is used to configure and validate the Cluster configuration.
+ *        Validates if the feature map, attributes and commands configuration is valid.
+ */
+struct ClusterConformance
+{
+public:
+    BitFlags<Feature> & FeatureMap() { return mFeatureMap; }
+    const BitFlags<Feature> & FeatureMap() const { return mFeatureMap; }
 
-void MatterClosureControlSetDelegate(EndpointId endpointId, ClosureControlClusterDelegate & delegate);
+    OptionalAttributesSet & OptionalAttributes() { return mOptionalAttributes; }
+    const OptionalAttributesSet & OptionalAttributes() const { return mOptionalAttributes; }
 
-void MatterClosureControlSetConformance(EndpointId endpointId, const ClusterConformance & conformance);
+    inline bool HasFeature(Feature aFeature) const { return mFeatureMap.Has(aFeature); }
 
-void MatterClosureControlSetInitParams(EndpointId endpointId, const ClusterInitParameters & initParams);
+    private:
+    BitFlags<Feature> mFeatureMap;
+    OptionalAttributesSet mOptionalAttributes;
+};
+
+/**
+ * @brief Struct to store the cluster initialization parameters
+ */
+struct ClusterInitParameters
+{
+    MainStateEnum mMainState                                             = MainStateEnum::kStopped;
+    DataModel::Nullable<GenericOverallCurrentState> mOverallCurrentState = DataModel::NullNullable;
+    BitFlags<LatchControlModesBitmap> mLatchControlModes;
+};
+
+/**
+ * @brief Interface owns the lifecycle of a ClosureControlCluster instance and registers it with
+ *        the data model provider.
+ *
+ *        Usage:
+ *          1. Construct an Interface with the endpoint and delegate.
+ *          2. Call Init(conformance, initParams) to stage the configuration.
+ *          3. Call Init() to create the underlying cluster and register it with the data
+ *             model provider.
+ *          4. Access the cluster via Cluster() and call its setters/getters directly.
+ *          5. Call Shutdown() to unregister the cluster and destroy the instance.
+ */
+class Interface
+{
+public:
+    Interface(EndpointId endpoint, ClosureControlClusterDelegate & delegate);
+    ~Interface() = default;
+
+    /**
+     * @brief Stages the cluster conformance and initialization parameters to be used by Init().
+     */
+    CHIP_ERROR Init(const ClusterConformance & conformance, const ClusterInitParameters & initParams);
+
+    /**
+     * @brief Constructs the underlying cluster using the staged conformance/initParams and registers
+     *        it with the data model provider.
+     *
+     * @return CHIP_NO_ERROR on success.
+     *         CHIP_ERROR_INCORRECT_STATE if conformance is invalid.
+     */
+    CHIP_ERROR Init();
+
+    /**
+     * @brief Unregisters the cluster from the data model provider and destroys the instance.
+     */
+    CHIP_ERROR Shutdown();
+
+    /**
+     * @brief Returns a reference to the underlying cluster instance.
+     *        Must only be called after Init() has been invoked successfully.
+     */
+    ClosureControlCluster & Cluster();
+
+    ClusterConformance & GetConformance() { return mConformance; }
+
+private:
+    EndpointId mEndpoint;
+    ClosureControlClusterDelegate & mDelegate;
+    ClusterConformance mConformance;
+    ClusterInitParameters mInitParams;
+    chip::app::LazyRegisteredServerCluster<ClosureControlCluster> mCluster;
+};
 
 } // namespace ClosureControl
 } // namespace Clusters

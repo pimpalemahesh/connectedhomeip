@@ -81,13 +81,12 @@ private:
  *
  * @param mEndpoint The endpoint ID associated with this Closure Control endpoint.
  * @param mDelegate The delegate instance for handling commands.
- * @param mClusterInstance The cluster instance for interacting with the cluster.
  */
 class ClosureControlEndpoint
 {
 public:
     ClosureControlEndpoint(EndpointId endpoint) :
-        mEndpoint(endpoint), mDelegate(), mInterface(mEndpoint, mDelegate), mClusterInstance(nullptr)
+        mEndpoint(endpoint), mDelegate(), mInterface(mEndpoint, mDelegate)
     {}
 
     /**
@@ -112,7 +111,7 @@ public:
      *
      * @return ClosureControlCluster& Reference to the internal ClosureControlCluster object.
      */
-    ClosureControlCluster & GetClusterInstance() { return *mClusterInstance; }
+    ClosureControlCluster & GetClusterInstance() { return mInterface.Cluster(); }
 
     /**
      * @brief Handles the completion of a stop motion action.
@@ -172,7 +171,6 @@ private:
     EndpointId mEndpoint = kInvalidEndpointId;
     ClosureControlDelegate mDelegate;
     Interface mInterface;
-    ClosureControlCluster * mClusterInstance;
 
     /**
      * @brief Updates the current state of the closure control endpoint from the target state.

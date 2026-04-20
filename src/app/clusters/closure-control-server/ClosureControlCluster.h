@@ -42,22 +42,10 @@ using OptionalAttributesSet = OptionalAttributeSet<ClosureControl::Attributes::C
 // As per the spec, the maximum allowed CurrentErrorList size is 10.
 constexpr int kCurrentErrorListMaxSize = 10;
 
-/**
- * @brief Code-driven implementation of the Closure Control cluster.
- *
- * This class integrates the existing ClusterLogic with the DefaultServerCluster
- * interface to provide a code-driven cluster implementation.
- */
 class ClosureControlCluster : public DefaultServerCluster
 {
 public:
-    /**
-     * @brief Builder-style configuration for constructing a ClosureControlCluster.
-     *
-     *        Required dependencies (endpoint, delegate, timer delegate) are provided through the
-     *        constructor. Feature selection, optional attribute selection and initial state are
-     *        set via the `With*` builder methods.
-     */
+
     struct Config
     {
         Config(EndpointId endpoint, ClosureControlClusterDelegate & delegate, TimerDelegate & timerDelegate) :

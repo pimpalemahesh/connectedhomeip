@@ -65,14 +65,6 @@ ClosureControlCluster::ClosureControlCluster(const Config & config) :
                            "Validation failed: CountdownTime requires Positioning enabled and Instantaneous disabled.");
     }
 
-    // Configure CountdownTime Quiet Reporting strategies
-    // - When it changes from 0 to any other value and vice versa
-    // - When it increases
-    // - When it changes from null to any other value and vice versa (default support)
-    mCountdownTime.policy()
-        .Set(QuieterReportingPolicyEnum::kMarkDirtyOnIncrement)
-        .Set(QuieterReportingPolicyEnum::kMarkDirtyOnChangeToFromZero);
-
     VerifyOrDieWithMsg(SetMainState(config.mInitialMainState) == CHIP_NO_ERROR, AppServer, "Failed to set main state");
     VerifyOrDieWithMsg(SetOverallCurrentState(config.mInitialOverallCurrentState) == CHIP_NO_ERROR, AppServer,
                        "Failed to set overall current state");
@@ -279,8 +271,7 @@ CHIP_ERROR ClosureControlCluster::SetMainState(MainStateEnum mainState)
     }
 
     VerifyOrReturnError(mDelegate.OnMainStateChanged(mainState), CHIP_ERROR_INCORRECT_STATE);
-    mMainState = mainState;
-    NotifyAttributeChanged(Attributes::MainState::Id);
+    SetAttributeValue(mMainState, mainState, Attributes::MainState::Id);
 
     if (!mFeatureMap.Has(Feature::kInstantaneous))
     {

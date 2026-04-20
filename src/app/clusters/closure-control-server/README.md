@@ -7,21 +7,18 @@ the operational state of closure devices.
 ## Overview
 
 This directory contains a code-driven C++ implementation of the Matter Closure
-Control cluster server. The public surface is split into two layers:
-
--   `ClosureControlCluster` (see `ClosureControlCluster.h`) — the cluster
-    implementation. It is configured via a builder-style `Config` object that
-    selects features, optional attributes, and initial state.
--   `Interface` (see `CodegenIntegration.h`) — owns the lifecycle of a
-    `ClosureControlCluster` instance and registers it with the
-    `CodegenDataModelProvider`. `Interface` is the entry point applications use
-    to stand up a cluster on an endpoint.
+Control cluster server. This implementation (`ClosureControlCluster.h`) is
+designed for flexibility, avoiding the tight coupling present in older
+codegen-based implementations.
 
 It uses a delegate pattern
 (`chip::app::Clusters::ClosureControl::ClosureControlClusterDelegate`) to
 interact with the application's closure control logic and state management.
 
 ## Usage
+
+To integrate the `ClosureControlCluster` into your application, follow these
+steps:
 
 ### 1. Implement the Delegate
 
@@ -38,80 +35,130 @@ class MyClosureControlDelegate : public chip::app::Clusters::ClosureControl::Clo
 };
 ```
 
-### 2. Create an Interface and configure it
+### 2. Build a Config with the cluster's features
 
-`Interface` is constructed with an endpoint and a delegate. Configure the
-cluster conformance and initial state, then call `Init` twice — once to stage
-the configuration and once to create and register the underlying cluster.
+Configure the cluster's feature map, optional attributes and initial state
+using the builder-style `ClosureControlCluster::Config`. The resulting
+configuration must be valid before cluster creation (see "Conformance
+Validation" below).
+
+```cpp
+#include "app/clusters/closure-control-server/ClosureControlCluster.h"
+
+using namespace chip::app::Clusters::ClosureControl;
+
+auto config = ClosureControlCluster::Config(/* endpoint */ 1, gMyDelegate, gTimerDelegate)
+                  .WithPositioning()
+                  .WithCalibration()
+                  // Add other features as needed via WithSpeed(), WithVentilation(),
+                  // WithPedestrian(), WithProtection(), WithManuallyOperable(),
+                  // WithInstantaneous()...
+                  .WithMotionLatching(chip::BitFlags<LatchControlModesBitmap>()
+                                          .Set(LatchControlModesBitmap::kRemoteLatching)
+                                          .Set(LatchControlModesBitmap::kRemoteUnlatching))
+                  .WithCountdownTime()
+                  .WithInitialMainState(MainStateEnum::kStopped);
+```
+
+### 3. Instantiate Delegates and Cluster
+
+Instantiate your delegate and the `ClosureControlCluster` itself for each
+endpoint that requires it. Using `RegisteredServerCluster` simplifies
+registration.
+
+```cpp
+#include "app/server-cluster/ServerClusterInterfaceRegistry.h"
+#include "lib/support/DefaultTimerDelegate.h"
+
+// In a .cpp file
+MyClosureControlDelegate gMyDelegate;
+chip::support::DefaultTimerDelegate gTimerDelegate;
+
+chip::app::RegisteredServerCluster<chip::app::Clusters::ClosureControl::ClosureControlCluster>
+    gClosureControlCluster(config);
+```
+
+### 4. Register the Cluster
+
+In your application's initialization sequence, register the cluster instance
+with the `CodegenDataModelProvider`. This hooks the cluster into the Matter data
+model and message processing framework.
+
+```cpp
+#include "data-model-providers/codegen/CodegenDataModelProvider.h"
+
+void ApplicationInit()
+{
+    // ... other initializations
+
+    // Register cluster BEFORE server starts
+    CHIP_ERROR err = chip::app::CodegenDataModelProvider::Instance().Registry().Register(
+        gClosureControlCluster.Registration());
+    VerifyOrDie(err == CHIP_NO_ERROR);
+
+    // ... server startup happens later
+}
+```
+
+All cluster setters/getters are then invoked directly on `gClosureControlCluster.Cluster()`.
+
+## Initialization Sequence
+
+### Code-Driven Cluster Usage (Recommended)
+
+For new applications using the code-driven cluster pattern:
+
+1. **Before Server Startup:**
+
+    - Build a `ClosureControlCluster::Config` with the desired features and
+      initial state via `With*` builder methods
+    - Instantiate delegate and cluster
+    - Register cluster with `CodegenDataModelProvider`
+
+2. **After Startup:**
+    - All getter/setter methods are safe to use directly on the cluster instance
+
+### Interface (Legacy / backward-compatible) Usage
+
+For backwards compatibility with applications using the legacy ZAP-generated
+patterns:
 
 ```cpp
 #include "app/clusters/closure-control-server/CodegenIntegration.h"
 
 using namespace chip::app::Clusters::ClosureControl;
 
-MyClosureControlDelegate gDelegate;
-Interface gInterface(/* endpoint */ 1, gDelegate);
+MyClosureControlDelegate gMyDelegate;
+Interface gClosureControlInterface(/* endpoint */ 1, gMyDelegate);
 
-CHIP_ERROR InitClosureControl()
+CHIP_ERROR ApplicationInit()
 {
     ClusterConformance conformance;
-    conformance.FeatureMap()
-        .Set(Feature::kPositioning)
-        .Set(Feature::kCalibration);
-    conformance.OptionalAttributes().Set<Attributes::CountdownTime::Id>();
+    conformance.FeatureMap().Set(Feature::kPositioning).Set(Feature::kCalibration);
 
     ClusterInitParameters initParams;
     initParams.mMainState = MainStateEnum::kStopped;
+    initParams.mLatchControlModes.Set(LatchControlModesBitmap::kRemoteLatching)
+        .Set(LatchControlModesBitmap::kRemoteUnlatching);
 
-    ReturnErrorOnFailure(gInterface.Init(conformance, initParams));
-    ReturnErrorOnFailure(gInterface.Init());
-    return CHIP_NO_ERROR;
+    return gClosureControlInterface.Init(conformance, initParams);
 }
 ```
 
-After the second `Init()` call, `gInterface.Cluster()` returns a reference to
-the underlying `ClosureControlCluster`, which exposes all setters, getters,
-command handlers and event generators.
-
-### 3. Shut down when done
-
-Call `Interface::Shutdown()` to unregister the cluster and destroy the instance.
-
-```cpp
-gInterface.Shutdown();
-```
-
-## Constructing a cluster directly (for tests)
-
-Tests and advanced integrations can construct `ClosureControlCluster` directly
-via the `Config` builder:
-
-```cpp
-ClosureControlCluster cluster(
-    ClosureControlCluster::Config(endpointId, delegate, timerDelegate)
-        .WithPositioning()
-        .WithMotionLatching(BitFlags<LatchControlModesBitmap>()
-                                .Set(LatchControlModesBitmap::kRemoteLatching)
-                                .Set(LatchControlModesBitmap::kRemoteUnlatching))
-        .WithCountdownTime()
-        .WithInitialMainState(MainStateEnum::kStopped));
-```
-
-The available builder methods mirror the cluster features:
-
--   `WithPositioning()`, `WithInstantaneous()`, `WithSpeed()`,
-    `WithVentilation()`, `WithPedestrian()`, `WithCalibration()`,
-    `WithProtection()`, `WithManuallyOperable()`
--   `WithMotionLatching(latchControlModes)` — enables MotionLatching and fixes
-    the value of the `LatchControlModes` attribute (Fixed quality)
--   `WithCountdownTime(initial = null)` — toggles the optional `CountdownTime`
-    attribute and sets its initial value
--   `WithInitialMainState(...)`, `WithInitialOverallCurrentState(...)` — initial
-    state
+After `Init()` succeeds, access the cluster via `gClosureControlInterface.Cluster()`.
 
 ## Conformance Validation
 
-`ClosureControlCluster`'s constructor validates feature combinations and aborts
-via `VerifyOrDie` on invalid configurations. `Interface::Init()` also runs
-`ClusterConformance::IsValid()` before creating the cluster and returns
-`CHIP_ERROR_INCORRECT_STATE` if the configuration is invalid.
+The cluster performs strict conformance validation during construction. **Any
+validation failure is fatal** and will terminate the application with "Invalid
+Conformance" message
+
+### Migrating from the Legacy API
+
+We recommend migrating to the new, direct instantiation method to improve
+performance and reduce your application's footprint.
+
+#### Recommended Usage
+
+The new approach is to instantiate the cluster directly and register it with the
+`CodegenDataModelProvider`, as detailed in the "Usage" section above.

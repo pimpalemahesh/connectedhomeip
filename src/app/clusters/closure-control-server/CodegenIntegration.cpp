@@ -30,8 +30,6 @@ using namespace chip::app::Clusters::ClosureControl;
 
 namespace {
 
-// A single process-wide default timer delegate shared by every ClosureControlCluster
-// instance created through the Interface.
 DefaultTimerDelegate gTimerDelegate;
 
 } // namespace
@@ -45,60 +43,60 @@ Interface::Interface(EndpointId endpoint, ClosureControlClusterDelegate & delega
 
 CHIP_ERROR Interface::Init(const ClusterConformance & conformance, const ClusterInitParameters & initParams)
 {
-    mConformance = conformance;
-    mInitParams  = initParams;
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR Interface::Init()
-{
+    VerifyOrReturnError(!mCluster.IsConstructed(), CHIP_ERROR_INCORRECT_STATE);
     ClosureControlCluster::Config config(mEndpoint, mDelegate, gTimerDelegate);
 
-    if (mConformance.HasFeature(Feature::kPositioning))
+    if (conformance.HasFeature(Feature::kPositioning))
     {
         config.WithPositioning();
     }
-    if (mConformance.HasFeature(Feature::kMotionLatching))
+    if (conformance.HasFeature(Feature::kMotionLatching))
     {
-        config.WithMotionLatching(mInitParams.mLatchControlModes);
+        config.WithMotionLatching(initParams.mLatchControlModes);
     }
-    if (mConformance.HasFeature(Feature::kInstantaneous))
+    if (conformance.HasFeature(Feature::kInstantaneous))
     {
         config.WithInstantaneous();
     }
-    if (mConformance.HasFeature(Feature::kSpeed))
+    if (conformance.HasFeature(Feature::kSpeed))
     {
         config.WithSpeed();
     }
-    if (mConformance.HasFeature(Feature::kVentilation))
+    if (conformance.HasFeature(Feature::kVentilation))
     {
         config.WithVentilation();
     }
-    if (mConformance.HasFeature(Feature::kPedestrian))
+    if (conformance.HasFeature(Feature::kPedestrian))
     {
         config.WithPedestrian();
     }
-    if (mConformance.HasFeature(Feature::kCalibration))
+    if (conformance.HasFeature(Feature::kCalibration))
     {
         config.WithCalibration();
     }
-    if (mConformance.HasFeature(Feature::kProtection))
+    if (conformance.HasFeature(Feature::kProtection))
     {
         config.WithProtection();
     }
-    if (mConformance.HasFeature(Feature::kManuallyOperable))
+    if (conformance.HasFeature(Feature::kManuallyOperable))
     {
         config.WithManuallyOperable();
     }
-    if (mConformance.OptionalAttributes().IsSet(Attributes::CountdownTime::Id))
+    if (conformance.OptionalAttributes().IsSet(Attributes::CountdownTime::Id))
     {
         config.WithCountdownTime();
     }
 
-    config.WithInitialMainState(mInitParams.mMainState).WithInitialOverallCurrentState(mInitParams.mOverallCurrentState);
+    config.WithInitialMainState(initParams.mMainState).WithInitialOverallCurrentState(initParams.mOverallCurrentState);
 
     mCluster.Create(config);
-    return CodegenDataModelProvider::Instance().Registry().Register(mCluster.Registration());
+    CHIP_ERROR err = CodegenDataModelProvider::Instance().Registry().Register(mCluster.Registration());
+    if (err != CHIP_NO_ERROR)
+    {
+        mCluster.Destroy();
+        return err;
+    }
+    return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR Interface::Shutdown()
@@ -120,10 +118,8 @@ ClosureControlCluster & Interface::Cluster()
 } // namespace app
 } // namespace chip
 
-// Ember hooks: the Interface-based pattern owns cluster creation/destruction, so these
-// callbacks are no-ops. The application is responsible for calling Interface::Init() /
-// Interface::Shutdown() at the appropriate lifecycle points.
 void MatterClosureControlClusterInitCallback(EndpointId endpointId) {}
 void MatterClosureControlClusterShutdownCallback(EndpointId endpointId, MatterClusterShutdownType shutdownType) {}
+
 void MatterClosureControlPluginServerInitCallback() {}
 void MatterClosureControlPluginServerShutdownCallback() {}

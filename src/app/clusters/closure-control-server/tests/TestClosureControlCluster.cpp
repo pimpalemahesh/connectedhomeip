@@ -717,3 +717,79 @@ TEST_F(TestClosureControlCluster, TestGenerateEngageStateChangedEvent)
     ASSERT_EQ(manuallyOperableCluster.Startup(testContext.Get()), CHIP_NO_ERROR);
     EXPECT_NE(manuallyOperableCluster.GenerateEngageStateChangedEvent(true), CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
 }
+
+TEST_F(TestClosureControlCluster, TestConformancePositioningOnly)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kPositioning));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceMotionLatchingWithoutPositioning)
+{
+    // MotionLatching without Positioning is valid per spec (PS/LT conformance is O.a+).
+    // Instantaneous is additionally set here to skip the constructor's CountdownTime reset
+    // path, which currently assumes Positioning whenever !Instantaneous.
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate)
+                                      .WithMotionLatching(BitFlags<LatchControlModesBitmap>())
+                                      .WithInstantaneous());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kMotionLatching).Set(Feature::kInstantaneous));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceSpeedRequiresPositioningWithoutInstantaneous)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithSpeed());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kPositioning).Set(Feature::kSpeed));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceVentilationRequiresPositioning)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithVentilation());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kPositioning).Set(Feature::kVentilation));
+}
+
+TEST_F(TestClosureControlCluster, TestConformancePedestrianRequiresPositioning)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithPedestrian());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kPositioning).Set(Feature::kPedestrian));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceCalibrationRequiresPositioning)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCalibration());
+    EXPECT_EQ(cluster.GetFeatureMap(), BitFlags<Feature>(Feature::kPositioning).Set(Feature::kCalibration));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceVentilationPedestrianCalibrationWithPositioning)
+{
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate)
+                                      .WithPositioning()
+                                      .WithVentilation()
+                                      .WithPedestrian()
+                                      .WithCalibration());
+    EXPECT_EQ(cluster.GetFeatureMap(),
+              BitFlags<Feature>(Feature::kPositioning).Set(Feature::kVentilation).Set(Feature::kPedestrian).Set(Feature::kCalibration));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceCountdownTimeRequiresPositioningWithoutInstantaneous)
+{
+    // CountdownTime optional attribute requires Positioning enabled and Instantaneous disabled.
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate).WithPositioning().WithCountdownTime());
+
+    std::vector<DataModel::AttributeEntry> expected(ClosureControl::Attributes::kMandatoryMetadata.begin(),
+                                                    ClosureControl::Attributes::kMandatoryMetadata.end());
+    expected.push_back(ClosureControl::Attributes::CountdownTime::kMetadataEntry);
+    EXPECT_TRUE(IsAttributesListEqualTo(cluster, expected));
+}
+
+TEST_F(TestClosureControlCluster, TestConformanceMotionLatchingExposesLatchControlModes)
+{
+    // Enabling MotionLatching must expose the LatchControlModes attribute alongside it.
+    ClosureControlCluster cluster(Config(kTestEndpointId, mockDelegate, mockTimerDelegate)
+                                      .WithPositioning()
+                                      .WithMotionLatching(BitFlags<LatchControlModesBitmap>()));
+
+    std::vector<DataModel::AttributeEntry> expected(ClosureControl::Attributes::kMandatoryMetadata.begin(),
+                                                    ClosureControl::Attributes::kMandatoryMetadata.end());
+    expected.push_back(ClosureControl::Attributes::LatchControlModes::kMetadataEntry);
+    EXPECT_TRUE(IsAttributesListEqualTo(cluster, expected));
+}

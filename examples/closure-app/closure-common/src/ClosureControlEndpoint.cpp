@@ -147,10 +147,8 @@ CHIP_ERROR ClosureControlEndpoint::Init()
     initParams.mLatchControlModes.Set(LatchControlModesBitmap::kRemoteLatching).Set(LatchControlModesBitmap::kRemoteUnlatching);
 
     ReturnErrorOnFailure(mInterface.Init(conformance, initParams));
-    ReturnErrorOnFailure(mInterface.Init());
 
-    mClusterInstance = &mInterface.Cluster();
-    mDelegate.SetClusterInstance(mClusterInstance);
+    mDelegate.SetClusterInstance(&mInterface.Cluster());
     return CHIP_NO_ERROR;
 }
 

@@ -85,9 +85,7 @@ private:
 class ClosureControlEndpoint
 {
 public:
-    ClosureControlEndpoint(EndpointId endpoint) :
-        mEndpoint(endpoint), mDelegate(), mInterface(mEndpoint, mDelegate)
-    {}
+    ClosureControlEndpoint(EndpointId endpoint) : mEndpoint(endpoint), mDelegate(), mInterface(mEndpoint, mDelegate) {}
 
     /**
      * @brief Initializes the ClosureControlEndpoint instance.

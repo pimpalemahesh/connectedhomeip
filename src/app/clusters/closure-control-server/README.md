@@ -37,10 +37,9 @@ class MyClosureControlDelegate : public chip::app::Clusters::ClosureControl::Clo
 
 ### 2. Build a Config with the cluster's features
 
-Configure the cluster's feature map, optional attributes and initial state
-using the builder-style `ClosureControlCluster::Config`. The resulting
-configuration must be valid before cluster creation (see "Conformance
-Validation" below).
+Configure the cluster's feature map, optional attributes and initial state using
+the builder-style `ClosureControlCluster::Config`. The resulting configuration
+must be valid before cluster creation (see "Conformance Validation" below).
 
 ```cpp
 #include "app/clusters/closure-control-server/ClosureControlCluster.h"
@@ -100,7 +99,8 @@ void ApplicationInit()
 }
 ```
 
-All cluster setters/getters are then invoked directly on `gClosureControlCluster.Cluster()`.
+All cluster setters/getters are then invoked directly on
+`gClosureControlCluster.Cluster()`.
 
 ## Initialization Sequence
 
@@ -145,7 +145,8 @@ CHIP_ERROR ApplicationInit()
 }
 ```
 
-After `Init()` succeeds, access the cluster via `gClosureControlInterface.Cluster()`.
+After `Init()` succeeds, access the cluster via
+`gClosureControlInterface.Cluster()`.
 
 ## Conformance Validation
 

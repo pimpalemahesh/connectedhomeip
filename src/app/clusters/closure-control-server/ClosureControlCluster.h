@@ -45,7 +45,6 @@ constexpr int kCurrentErrorListMaxSize = 10;
 class ClosureControlCluster : public DefaultServerCluster
 {
 public:
-
     struct Config
     {
         Config(EndpointId endpoint, ClosureControlClusterDelegate & delegate, TimerDelegate & timerDelegate) :

@@ -766,8 +766,9 @@ TEST_F(TestClosureControlCluster, TestConformanceVentilationPedestrianCalibratio
                                       .WithVentilation()
                                       .WithPedestrian()
                                       .WithCalibration());
-    EXPECT_EQ(cluster.GetFeatureMap(),
-              BitFlags<Feature>(Feature::kPositioning).Set(Feature::kVentilation).Set(Feature::kPedestrian).Set(Feature::kCalibration));
+    EXPECT_EQ(
+        cluster.GetFeatureMap(),
+        BitFlags<Feature>(Feature::kPositioning).Set(Feature::kVentilation).Set(Feature::kPedestrian).Set(Feature::kCalibration));
 }
 
 TEST_F(TestClosureControlCluster, TestConformanceCountdownTimeRequiresPositioningWithoutInstantaneous)

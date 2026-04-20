@@ -148,7 +148,8 @@ CHIP_ERROR ClosureControlEndpoint::Init()
 
     ReturnErrorOnFailure(mInterface.Init(conformance, initParams));
 
-    mDelegate.SetClusterInstance(&mInterface.Cluster());
+    mClusterInstance = &mInterface.Cluster();
+    mDelegate.SetClusterInstance(mClusterInstance);
     return CHIP_NO_ERROR;
 }
 

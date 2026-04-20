@@ -481,30 +481,6 @@ void ClosureControlCluster::ClearCurrentErrorList()
     SetAttributeValue(mCurrentErrorCount, size_t(0), Attributes::CurrentErrorList::Id);
 }
 
-// TODO: Move the CountdownTime handling to Delegate
-DataModel::Nullable<ElapsedS> ClosureControlCluster::GetCountdownTime() const
-{
-    VerifyOrReturnValue(mFeatureMap.Has(Feature::kPositioning) && !mFeatureMap.Has(Feature::kInstantaneous),
-                        DataModel::NullNullable,
-                        ChipLogError(AppServer, "Cluster should support Positioning and not Instantaneous feature"));
-    return mCountdownTime.value();
-}
-
-MainStateEnum ClosureControlCluster::GetMainState() const
-{
-    return mMainState;
-}
-
-DataModel::Nullable<GenericOverallCurrentState> ClosureControlCluster::GetOverallCurrentState() const
-{
-    return mOverallCurrentState;
-}
-
-DataModel::Nullable<GenericOverallTargetState> ClosureControlCluster::GetOverallTargetState() const
-{
-    return mOverallTargetState;
-}
-
 CHIP_ERROR ClosureControlCluster::GetCurrentErrorList(Span<ClosureErrorEnum> & outputSpan)
 {
     assertChipStackLockedByCurrentThread();
@@ -530,19 +506,6 @@ CHIP_ERROR ClosureControlCluster::ReadCurrentErrorListAttribute(const AttributeV
         ReturnErrorOnFailure(encoder.Encode(error));
     }
     return CHIP_NO_ERROR;
-}
-
-BitFlags<LatchControlModesBitmap> ClosureControlCluster::GetLatchControlModes() const
-{
-    VerifyOrReturnValue(mFeatureMap.Has(Feature::kMotionLatching), BitFlags<LatchControlModesBitmap>(),
-                        ChipLogError(AppServer, "LatchControlModes feature is not supported"));
-    return mLatchControlModes;
-}
-
-BitFlags<Feature> ClosureControlCluster::GetFeatureMap() const
-{
-
-    return mFeatureMap;
 }
 
 Protocols::InteractionModel::Status ClosureControlCluster::HandleStop()

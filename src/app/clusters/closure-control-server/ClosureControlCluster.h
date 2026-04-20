@@ -146,12 +146,12 @@ public:
                                                                chip::TLV::TLVReader & input_arguments,
                                                                CommandHandler * handler) override;
 
-    DataModel::Nullable<ElapsedS> GetCountdownTime() const;
-    MainStateEnum GetMainState() const;
-    DataModel::Nullable<GenericOverallCurrentState> GetOverallCurrentState() const;
-    DataModel::Nullable<GenericOverallTargetState> GetOverallTargetState() const;
-    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const;
-    BitFlags<Feature> GetFeatureMap() const;
+    DataModel::Nullable<ElapsedS> GetCountdownTime() const { return mCountdownTime.value(); }
+    MainStateEnum GetMainState() const { return mMainState; }
+    DataModel::Nullable<GenericOverallCurrentState> GetOverallCurrentState() const { return mOverallCurrentState; }
+    DataModel::Nullable<GenericOverallTargetState> GetOverallTargetState() const { return mOverallTargetState; }
+    BitFlags<LatchControlModesBitmap> GetLatchControlModes() const { return mLatchControlModes; }
+    BitFlags<Feature> GetFeatureMap() const { return mFeatureMap; }
 
     /**
      * @brief Gets the current error list.

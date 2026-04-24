@@ -310,8 +310,8 @@ public:
 private:
     ClosureControlClusterDelegate & mDelegate;
     TimerDelegate & mTimerDelegate;
-    BitFlags<Feature> mFeatureMap;
-    OptionalAttributesSet mOptionalAttributes;
+    const BitFlags<Feature> mFeatureMap;
+    const OptionalAttributesSet mOptionalAttributes;
 
     QuieterReportingAttribute<ElapsedS> mCountdownTime;
     MainStateEnum mMainState                                             = MainStateEnum::kUnknownEnumValue;

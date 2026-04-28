@@ -1,0 +1,848 @@
+================================================================================
+                     MATTER OTA — END-TO-END FLOW REFERENCE
+                       (connectedhomeip / Matter SDK)
+================================================================================
+
+  Audience : firmware engineers integrating OTA into a Matter product.
+  Scope    : the entire path a firmware image takes, from a release pipeline
+             on a build machine to a confirmed boot on the device.
+  Style    : plain text + ASCII diagrams; readable in any editor or terminal.
+
+  Companion docs in this directory:
+    - README.md      : ESP32 multi-image OTA design draft.
+    - BDX.md         : the Bulk Data Exchange protocol that carries the bytes.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+   1. The big picture (two-node architecture)
+   2. Component map — Provider side
+   3. Component map — Requestor side
+   4. The state machine
+   5. The on-the-wire commands (cluster + BDX)
+   6. End-to-end sequence diagram (single-image OTA)
+   7. The image file format
+   8. Multi-image OTA extension (TLV dispatcher)
+   9. End-to-end sequence diagram (multi-image OTA)
+  10. Threading model
+  11. Failure modes & recovery
+  12. Repo map (what lives where)
+  13. Build flags & wiring
+  14. Glossary
+
+
+================================================================================
+1. THE BIG PICTURE — TWO-NODE ARCHITECTURE
+================================================================================
+
+  Matter OTA is a peer-to-peer interaction between TWO MATTER NODES on the
+  same fabric. There is no HTTP, no cloud, no S3 at the spec level.
+
+  +-------------------------------+        +---------------------------------+
+  |       OTA Provider Node       |        |       OTA Requestor Node        |
+  |  (a.k.a. "the file server")   |        |  (the device being updated)     |
+  |                               |        |                                 |
+  |  - Hosts .ota files on disk   |        |  - Runs the firmware            |
+  |  - OTA Provider cluster (S)   | <----> |  - OTA Requestor cluster (S)    |
+  |  - OTA Provider cluster (C-)  |        |  - OTA Provider cluster (C)     |
+  |  - BDX sender                 |        |  - BDX receiver                 |
+  |                               |        |  - Image processor              |
+  |  Implementations:             |        |    (per-platform flash writer)  |
+  |   * chip-ota-provider-app     |        |                                 |
+  |   * Hub firmware              |        |  Implementations:               |
+  |   * Mobile companion app      |        |   * Your product firmware       |
+  +-------------------------------+        +---------------------------------+
+
+  S = cluster server (hosts attributes/commands).
+  C = cluster client (sends commands).
+
+  Provider is a server for OTA Provider cluster (other nodes call into it),
+  AND a client of nothing — it never reaches into Requestors.
+
+  Requestor is a server for OTA Requestor cluster (so a commissioner can
+  push AnnounceOTAProvider to it), AND a client of OTA Provider cluster
+  (so it can call QueryImage / ApplyUpdateRequest / NotifyUpdateApplied
+  on the Provider).
+
+  A SINGLE DEVICE can be both. A hub typically downloads an update from a
+  cloud Provider and re-serves it as a Provider to its child devices.
+
+================================================================================
+2. COMPONENT MAP — PROVIDER SIDE
+================================================================================
+
+  Repo location:  src/app/clusters/ota-provider/
+
+  +-----------------------------------------------------------+
+  |                  OTA Provider cluster server              |
+  |                  (OTAProviderCluster.cpp)                  |
+  |                                                           |
+  |   3 commands handled:                                     |
+  |     QueryImage           -> "newer image available?"      |
+  |     ApplyUpdateRequest   -> "may I apply now?"            |
+  |     NotifyUpdateApplied  -> "I confirmed install"         |
+  +---------------------+-------------------------------------+
+                        |
+                        | delegates "do you have a file?" to:
+                        v
+  +-----------------------------------------------------------+
+  |              ota-provider-delegate.h                      |
+  |  (interface implemented by the host application)         |
+  |                                                           |
+  |   HandleQueryImage           -> consult catalog, pick file|
+  |   HandleApplyUpdateRequest   -> Proceed/Await/Discontinue |
+  |   HandleNotifyUpdateApplied  -> bookkeeping               |
+  +-----------------------------+-----------------------------+
+                                |
+                                | optional pre-flight check
+                                v
+  +-----------------------------------------------------------+
+  |        OTAProviderUserConsentDelegate.h                   |
+  |  (e.g., hub operator confirms "yes push this to that bulb")|
+  +-----------------------------------------------------------+
+
+  Reference example: examples/ota-provider-app/linux/main.cpp
+
+  In production, the Provider is typically:
+    * A Linux daemon that watches a directory of .ota files and serves them.
+    * A hub that re-publishes upstream firmware to its child devices.
+    * A mobile app that holds a downloaded update for one device.
+
+================================================================================
+3. COMPONENT MAP — REQUESTOR SIDE
+================================================================================
+
+  Repo location:  src/app/clusters/ota-requestor/
+
+  This is where most of the action lives. SIX layers, each replaceable
+  independently.
+
+  +-----------------------------------------------------------------------+
+  |  Layer 1:  OTARequestorCluster                                        |
+  |            (data-model adapter; ZAP-generated wiring)                 |
+  |  Job: receive AnnounceOTAProvider from the wire, expose attributes    |
+  |       UpdateState / UpdateStateProgress / DefaultOTAProviders         |
+  +-----------------+-----------------------------------------------------+
+                    | calls into
+                    v
+  +-----------------------------------------------------------------------+
+  |  Layer 2:  OTARequestorInterface  (DefaultOTARequestor)               |
+  |            CORE STATE MACHINE                                          |
+  |  Job: send QueryImage, parse response, drive download, send           |
+  |       ApplyUpdateRequest, send NotifyUpdateApplied. Owns the          |
+  |       UpdateState enum and emits StateTransition events.              |
+  +---+--------------------+-------------------------+--------------------+
+      |                    |                         |
+      |asks "what now?"    |"go fetch"               |"persist this"
+      v                    v                         v
+  +-------------------+  +----------------------+  +-----------------------+
+  | Layer 3:          |  | Layer 4:             |  | Layer 5:              |
+  | OTARequestor      |  | OTADownloader        |  | OTARequestorStorage   |
+  | Driver            |  | (BDXDownloader)      |  | (DefaultOTARequestor- |
+  | (Default/Extended)|  |                      |  |  Storage)             |
+  | POLICY            |  | TRANSPORT            |  | NVS PERSISTENCE       |
+  +-------------------+  +-----------+----------+  +-----------------------+
+                                     |
+                                     | hands every BDX block to
+                                     v
+                         +-------------------------------+
+                         | Layer 6:                      |
+                         | OTAImageProcessorInterface    |
+                         | (per-platform impl)           |
+                         | PERSISTENCE + ACTIVATION      |
+                         +-------------------------------+
+
+  PER-LAYER RESPONSIBILITY (one-line summaries):
+
+    Layer 1 (Cluster)   : "Talk Matter on the wire."
+    Layer 2 (Interface) : "Run the OTA workflow."
+    Layer 3 (Driver)    : "Decide when to download / apply / retry."
+    Layer 4 (Downloader): "Pump bytes off BDX."
+    Layer 5 (Storage)   : "Remember what we were doing across reboots."
+    Layer 6 (Processor) : "Write bytes to flash and reboot."
+
+  WHO TYPICALLY OVERRIDES WHAT?
+
+    Layer 6 : Always (per platform).
+    Layer 3 : Sometimes (battery-powered / user-facing products).
+    Layers 1, 2, 4, 5 : Rarely. Defaults work.
+
+================================================================================
+4. THE STATE MACHINE
+================================================================================
+
+  The Requestor's UpdateState attribute follows this state diagram:
+
+        +--------- periodic 24h timer fires ------------+
+        |                                                |
+        v                                                |
+   +--------+   QueryImage   +-----------+               |
+   |  Idle  |--------------> | Querying  |               |
+   +--------+                +-----+-----+               |
+       ^                            |                    |
+       |                            | QueryImageResponse |
+       |                            v                    |
+       |        +-----------------------------+          |
+       |        | UpdateAvailable ?           |          |
+       |        +-+------------+--------------+          |
+       |          |            |                         |
+       |   yes,no |    yes,    |   no/busy/notavail      |
+       |   delay  |    immed.  |                         |
+       |          v            v                         |
+       |   +--------------+  +-----------+               |
+       |   |DelayedOnQuery|  |Downloading|               |
+       |   +------+-------+  +-----+-----+               |
+       |          |                |                     |
+       |          +-----+----------+                     |
+       |                |                                |
+       |                | BDX done -> ImageProcessor::Finalize
+       |                v                                |
+       |          +-------------+                        |
+       |          |  Applying   |--+                     |
+       |          +-----+-------+  |                     |
+       |                |          |                     |
+       |  ApplyResponse |          | ImageProcessor::Apply
+       |     Proceed    |          |   -> reboot
+       |                v          v                     |
+       |       +--------------+  (device reboots)        |
+       |       |DelayedOnApply|                          |
+       |       +------+-------+                          |
+       |              |                                  |
+       |              v                                  |
+       |         (reboot)                                |
+       |                                                 |
+       |        on next boot:                            |
+       |          IsFirstImageRun() == true              |
+       |          ConfirmCurrentImage() == OK            |
+       |          NotifyUpdateApplied                    |
+       +-------------------------------------------------+
+
+  Failure paths (any state -> Idle):
+    - Provider unreachable
+    - Image header digest mismatch
+    - BDX timeout
+    - ImageProcessor returns error
+    - User consent denied
+
+================================================================================
+5. THE ON-THE-WIRE COMMANDS
+================================================================================
+
+  5.1 OTA Provider cluster (cluster id 0x0029)
+      ---------------------------------------------------------------
+      Hosted on : Provider node
+      Commands  :
+        QueryImage(VendorID, ProductID, SoftwareVersion, ProtocolsSupported,
+                   HardwareVersion?, Location?, RequestorCanConsent?,
+                   MetadataForProvider?)
+              -> QueryImageResponse(Status, DelayedActionTime?,
+                                    ImageURI?, SoftwareVersion?,
+                                    SoftwareVersionString?,
+                                    UpdateToken?, UserConsentNeeded?,
+                                    MetadataForRequestor?)
+              Status = UpdateAvailable | Busy | NotAvailable |
+                       DownloadProtocolNotSupported
+
+        ApplyUpdateRequest(UpdateToken, NewVersion)
+              -> ApplyUpdateResponse(Action, DelayedActionTime?)
+              Action = Proceed | AwaitNextAction | Discontinue
+
+        NotifyUpdateApplied(UpdateToken, SoftwareVersion)
+              -> (no response payload; just status code)
+
+  5.2 OTA Requestor cluster (cluster id 0x002A)
+      ---------------------------------------------------------------
+      Hosted on : Requestor node
+      Commands  :
+        AnnounceOTAProvider(ProviderNodeID, VendorID, AnnouncementReason,
+                            MetadataForNode?, Endpoint)
+
+      Attributes:
+        DefaultOTAProviders   list of (FabricIndex, ProviderNodeID, Endpoint)
+        UpdatePossible        bool
+        UpdateState           enum  (Idle / Querying / DelayedOnQuery /
+                                     Downloading / Applying /
+                                     DelayedOnApply / RollingBack /
+                                     DelayedOnUserConsent)
+        UpdateStateProgress   nullable u8 (0..100)
+
+      Events:
+        StateTransition       new state, previous state, reason
+        VersionApplied        software version, product id
+        DownloadError         software version, bytes downloaded, error
+
+  5.3 BDX (Bulk Data Exchange)  src/protocols/bdx/
+      ---------------------------------------------------------------
+      A Matter-native streaming protocol that runs on the same secure
+      session as the cluster commands. Used here purely for the file
+      bytes.
+
+      Roles in OTA: Provider = SENDER, Requestor = RECEIVER.
+
+      Frames (simplified):
+        SendInit(transferControlFlags, maxBlockSize, fileDesignator,
+                 startOffset?, length?)
+        SendAccept(maxBlockSize)
+        BlockQuery(blockCounter)
+        Block(blockCounter, data, isEOF)
+        BlockAck(blockCounter)
+        BlockAckEOF
+        BlockQueryWithSkip(blockCounter, bytesToSkip)   -- used for resume
+
+      Default block size: 1024 bytes. Configurable via
+      OTARequestorDriver::GetMaxDownloadBlockSize().
+
+      See BDX.md in this directory for a full walkthrough.
+
+================================================================================
+6. END-TO-END SEQUENCE DIAGRAM (SINGLE-IMAGE)
+================================================================================
+
+  Players:
+    P  = Provider (chip-ota-provider-app)
+    R  = Requestor's DefaultOTARequestor (state machine)
+    D  = Requestor's DefaultOTARequestorDriver (policy)
+    BD = Requestor's BDXDownloader
+    IP = Requestor's ImageProcessor (platform-specific)
+    BL = Requestor's bootloader / ROM
+
+  Time flows downward.
+
+   P                  R                  D                  BD                IP                BL
+   |                  |                  |                  |                 |                 |
+   |                  |  24h timer fires |                  |                 |                 |
+   |                  | <--------------- |                  |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |    QueryImage    |                  |                  |                 |                 |
+   | <--------------- |                  |                  |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |  QueryImageResp  |                  |                  |                 |                 |
+   | (UpdateAvailable)|                  |                  |                 |                 |
+   | ---------------> |                  |                  |                 |                 |
+   |                  |  UpdateAvailable |                  |                 |                 |
+   |                  | ---------------> |                  |                 |                 |
+   |                  |                  |  "download now"  |                 |                 |
+   |                  |     <----------- |                  |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |                  |  state=Downloading                  |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |                  |  BeginPrepareDownload               |                 |                 |
+   |                  | ----------------------------------> |                 |                 |
+   |                  |                  |                  | PrepareDownload |                 |
+   |                  |                  |                  | --------------> |                 |
+   |                  |                  |                  | OnPreparedFor   |                 |
+   |                  |                  |                  | Download(OK)    |                 |
+   |                  |                  |                  | <-------------- |                 |
+   |                  |                  |                  |                 |                 |
+   |    BDX SendInit  |                  |                  |                 |                 |
+   | <----------------|------------------|----------------- |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |    BDX SendAccept                   |                  |                 |                 |
+   | --------------------------------------------------- -> |                 |                 |
+   |                  |                  |                  |                 |                 |
+   |  +-- LOOP: BlockQuery / Block / BlockAck --+           |                 |                 |
+   |  |               |                  |                  |                 |                 |
+   |  |  BlockQuery                                         |                 |                 |
+   |  | <--------------------------------------------------|                 |                 |
+   |  |  Block(N, data, eof?)                              |                 |                 |
+   |  | -------------------------------------------------->|                 |                 |
+   |  |                                                    | ProcessBlock    |                 |
+   |  |                                                    | --------------> |                 |
+   |  |                                                    |   (writes flash)|                 |
+   |  |                                                    | <-------------- |                 |
+   |  +-- repeat until eof = true ------------+            |                 |                 |
+   |                  |                       |            |                 |                 |
+   |                  |                                    |  Finalize       |                 |
+   |                  |                                    | --------------> |                 |
+   |                  |  EndDownload(NO_ERROR)             |                 |                 |
+   |                  | <----------------------------------|                 |                 |
+   |                  |  state=Applying                    |                 |                 |
+   |                  |  UpdateDownloaded                  |                 |                 |
+   |                  | ---------------> |                 |                 |                 |
+   |                  |                  | "apply now"     |                 |                 |
+   |                  | <----------------|                 |                 |                 |
+   |                  |                  |                 |                 |                 |
+   |  ApplyUpdateRequest                  |                 |                 |                 |
+   | <----------------|                  |                 |                 |                 |
+   |  ApplyResponse(Proceed)             |                 |                 |                 |
+   | ---------------> |                  |                 |                 |                 |
+   |                  |  Apply           |                 |                 |                 |
+   |                  | ---------------------------------> |                 |                 |
+   |                  |                                    | esp_ota_set_    |                 |
+   |                  |                                    | boot_partition  |                 |
+   |                  |                                    | -------------------------------> |
+   |                  |                                    | esp_restart()                    |
+   |                  |                                    | -------------------------------> |
+   |                  |                                                                       |
+   |                  |              -- DEVICE REBOOTS --                                     |
+   |                  |                                                                       |
+   |                  |  on boot: IsFirstImageRun? yes                                       |
+   |                  |  ConfirmCurrentImage? yes (version match)                            |
+   |                  |  esp_ota_mark_app_valid_cancel_rollback                              |
+   |                  |                                                                       |
+   |  NotifyUpdateApplied                                                                     |
+   | <----------------|                                                                       |
+   |  (status OK)                                                                             |
+   | ---------------> |                                                                       |
+   |                  |  state=Idle                                                            |
+   |                  |  periodic timer restarts                                               |
+
+================================================================================
+7. THE IMAGE FILE FORMAT
+================================================================================
+
+  An .ota file is two parts: a Matter-defined header, then an opaque payload.
+
+  +-----------------------------------------------------------+   <-- file
+  |  4 bytes  : Magic 0x1BEEF11E (kOTAImageFileIdentifier)    |       offset 0
+  |  8 bytes  : Total Size                                    |
+  |  4 bytes  : Header TLV Size                               |
+  +-----------------------------------------------------------+
+  |  Header TLV (variable, parsed by OTAImageHeaderParser):   |
+  |     VendorId             : u16                            |
+  |     ProductId            : u16                            |
+  |     SoftwareVersion      : u32                            |
+  |     SoftwareVersionString: UTF-8                          |
+  |     PayloadSize          : u64                            |
+  |     MinApplicableVersion : u32 (optional)                 |
+  |     MaxApplicableVersion : u32 (optional)                 |
+  |     ReleaseNotesURL      : UTF-8 (optional)               |
+  |     ImageDigestType      : u8 (1=SHA-256, ...)            |
+  |     ImageDigest          : bytes (e.g. 32 bytes for SHA-256) |
+  +-----------------------------------------------------------+   <-- payload
+  |                                                           |       starts here
+  |          PAYLOAD  (PayloadSize bytes)                     |
+  |                                                           |
+  |   - For single-image: raw firmware blob.                  |
+  |   - For Silabs/NXP/ESP32 multi-image: TLV stream.          |
+  |   - For Nordic: dfu_multi_image manifest + sub-images.     |
+  |                                                           |
+  +-----------------------------------------------------------+
+
+  The HEADER is mandatory and identical across platforms.
+  The PAYLOAD is opaque to Matter; the platform image processor decides
+  how to interpret it.
+
+  Integrity: the header carries a digest (SHA-256 by default) covering
+  the payload. The Requestor verifies this BEFORE calling Apply.
+
+  Tooling: src/app/ota_image_tool.py
+    Usage:
+      ota_image_tool.py create \
+        --vendor-id 0x131B --product-id 0x1234 \
+        --version 17 --version-str "1.4.0" \
+        --digest-algorithm sha256 \
+        raw-firmware.bin   device.ota
+
+================================================================================
+8. MULTI-IMAGE OTA EXTENSION (TLV DISPATCHER)
+================================================================================
+
+  The PAYLOAD section becomes a stream of TLV (tag/length/value) sections.
+  Each TLV addresses one component (app, bootloader, coproc firmware, etc.).
+
+   PAYLOAD layout (multi-image):
+
+   +------------------------------------------------------------+
+   |  TLV section 1                                             |
+   |    [ tag(4) | length(4) ] [ descriptor(132) | bytes(...) ] |
+   +------------------------------------------------------------+
+   |  TLV section 2                                             |
+   |    [ tag(4) | length(4) ] [ descriptor(132) | bytes(...) ] |
+   +------------------------------------------------------------+
+   |  ...                                                       |
+   +------------------------------------------------------------+
+
+   tag       : uint32, identifies which processor handles these bytes.
+   length    : uint32, size of the value field (descriptor + bytes).
+   descriptor: 132-byte struct { u32 version; char vstr[64]; char date[64]; }
+   bytes     : the actual firmware/data for this component.
+
+  RUNTIME DISPATCH FLOW:
+
+         +------ Matter outer header parsed --------+
+         |                                          |
+         v                                          |
+   +-----+------+                                   |
+   | Read 8     |    accumulator gathers           |
+   | bytes for  |    until 8 bytes available       |
+   | TLV header |                                   |
+   +-----+------+                                   |
+         |                                          |
+         | tag, length known                        |
+         v                                          |
+   +-----+--------+                                 |
+   | Look up tag  |  not found -> abort whole OTA  |
+   | in processor |                                 |
+   | map          |                                 |
+   +-----+--------+                                 |
+         |                                          |
+         | found                                    |
+         v                                          |
+   +-----+--------+                                 |
+   | Init that    |                                 |
+   | processor    |                                 |
+   +-----+--------+                                 |
+         |                                          |
+         v                                          |
+   +-----+----------+                               |
+   | Process bytes  |   loop until processor       |
+   | (subclass-     |   has consumed `length`      |
+   |  specific)     |   bytes                      |
+   +-----+----------+                               |
+         |                                          |
+         v                                          |
+   +------------+                                   |
+   | ExitAction |                                   |
+   +-----+------+                                   |
+         |                                          |
+         | back to top: more TLVs?                  |
+         +------------------------------------------+
+         |
+         | no more bytes -> Finalize phase
+
+  CONCRETE PROCESSORS PER TAG (recommended layout):
+
+    tag = 1   (kApplication)    : OTAAppFirmwareProcessor
+                                  - wraps esp_ota_* (ESP32)
+                                  - or bootloader_eraseWriteStorage (Silabs)
+    tag = 2   (kBootloader)     : optional 2nd-stage bootloader updater
+    tag = 3   (kPartitionTable) : optional partitions.bin updater
+    tag = 4   (kFactoryData)    : optional DAC/PAI/CD rotation
+    tag >= 65536 (manufacturer) : OTAUartCoprocFirmwareProcessor, etc.
+
+================================================================================
+9. END-TO-END SEQUENCE DIAGRAM (MULTI-IMAGE)
+================================================================================
+
+  Same as single-image, but the ProcessBlock step expands. Showing only
+  the ProcessBlock loop here (everything before and after is identical to
+  Section 6).
+
+  Players:
+    BD   = BDXDownloader
+    DSP  = OTAMultiImageProcessorImpl  (the dispatcher)
+    P_A  = OTAAppFirmwareProcessor     (handles tag=1)
+    P_C  = OTAUartCoprocFirmware-      (handles tag=0x131B0001)
+           Processor
+
+  --- Per BDX block: ---
+
+   BD                 DSP                 P_A                 P_C
+   |                   |                   |                   |
+   |  ProcessBlock     |                   |                   |
+   | ----------------> |                   |                   |
+   |                   | (parses outer Matter header on first  |
+   |                   |  call, then enters ProcessPayload)    |
+   |                   |                                       |
+   |                   | accumulator collects 8 bytes          |
+   |                   | reads tag=0x131B0001, length=98304    |
+   |                   | look up in mProcessorMap -> P_C       |
+   |                   | P_C->Init()                           |
+   |                   | P_C->Process(remaining bytes)         |
+   |                   | -----------------------------------> P_C
+   |                   |                                       |
+   |                   |             (descriptor + bytes       |
+   |                   |              streamed over UART       |
+   |                   |              to coproc bootloader)    |
+   |                   |                                       |
+   |                   | <----------------------------------- P_C
+   |                   |  if processed == length:              |
+   |                   |    P_C->ExitAction()                  |
+   |                   |    return CHIP_OTA_CHANGE_PROCESSOR   |
+   |                   |  else:                                |
+   |                   |    return CHIP_NO_ERROR (need more)   |
+   |                   |                                       |
+   |                   |  (for subsequent blocks, dispatcher   |
+   |                   |   may switch to P_A for tag=1)        |
+   |                   |                                       |
+   |                   | -> P_A->Process(...)                  |
+   |                   |    (writes app image to ESP-IDF       |
+   |                   |     OTA partition via esp_ota_write)  |
+   |  FetchNextData    |                                       |
+   | <---------------- |                                       |
+
+  --- After all bytes received, Finalize phase: ---
+
+   DSP                P_A                P_C
+   |                   |                  |
+   |  HandleFinalize() |                  |
+   |  -- iterate every selected processor:                    |
+   |                   |                  |
+   |                   | FinalizeAction() |
+   | ----------------> |                  |
+   |                   | (flush 64-byte   |
+   |                   |  tail buffer)    |
+   | <---------------- |                  |
+   |                   |                  |
+   |                   |                  | FinalizeAction()
+   | -----------------------------------> |
+   |                   |                  | (send "end of image"
+   |                   |                  |  frame to coproc)
+   | <----------------------------------- |
+
+  --- Apply phase (atomic across all processors): ---
+
+   DSP                P_A                P_C                BL
+   |                   |                  |                 |
+   |  HandleApply()    |                  |                 |
+   |                   |                  |                 |
+   |  -- for each selected processor, call ApplyAction:     |
+   |                   |                  |                 |
+   |                   |                  | ApplyAction()   |
+   | -----------------------------------> |                 |
+   |                   |                  | (send "boot new |
+   |                   |                  |  image" to coproc;
+   |                   |                  |  verify Spinel  |
+   |                   |                  |  comes back)    |
+   | <----------------------------------- |                 |
+   |  if FAIL -> AbortAllProcessors, NO REBOOT, return.     |
+   |                   |                  |                 |
+   |                   | ApplyAction()    |                 |
+   | ----------------> |                  |                 |
+   |                   | esp_ota_set_     |                 |
+   |                   | boot_partition() |                 |
+   |                   | --------------------------------> |
+   | <---------------- |                  |                 |
+   |                   |                                    |
+   |  delay timer (graceful shutdown of subscriptions)      |
+   |  esp_restart()                                         |
+   |  ------------------------------------------------> ALL |
+   |                                                        |
+   |              -- BOTH MCUs are now running new firmware |
+
+================================================================================
+10. THREADING MODEL
+================================================================================
+
+  Every component runs on the MATTER (CHIP) thread:
+    - Cluster server callbacks
+    - DefaultOTARequestor state transitions
+    - Driver decisions
+    - BDXDownloader pump
+    - ImageProcessor methods (PrepareDownload, ProcessBlock, ...)
+
+  EXCEPT: BDX bytes arrive on whatever thread the underlying transport
+  uses (typically the system networking layer). The image processor
+  handles this by:
+
+    1. ProcessBlock(block) is called from the BDX thread.
+    2. Implementation does SetBlock(block) -> heap-copies the bytes.
+    3. PlatformMgr().ScheduleWork(HandleProcessBlock, this)
+       -> hops to Matter thread.
+    4. HandleProcessBlock runs on Matter thread, calls into per-component
+       processors. Processors touch flash / UART safely.
+
+  This is why concrete processor methods do NOT need to be thread-safe.
+  They only ever run on the Matter thread.
+
+  IMPLICATION: don't BLOCK in ProcessInternal. Slow UART writes should
+  use FetchAlreadyScheduled and resume FetchNextData asynchronously.
+
+================================================================================
+11. FAILURE MODES & RECOVERY
+================================================================================
+
+  +---------------------------------------+----------------------------------+
+  | Failure point                         | Behavior / recovery              |
+  +---------------------------------------+----------------------------------+
+  | Network drops during BDX              | BDX session times out, Requestor |
+  |                                       | returns to Idle. Periodic timer  |
+  |                                       | retries in 24h, or app calls     |
+  |                                       | TriggerImmediateQuery sooner.    |
+  |                                       | Bytes already written are        |
+  |                                       | overwritten cleanly on next try. |
+  +---------------------------------------+----------------------------------+
+  | Image header digest mismatch          | DefaultOTARequestor calls        |
+  |                                       | CancelImageUpdate. ImageProcessor|
+  |                                       | ::Abort runs. State -> Idle.     |
+  +---------------------------------------+----------------------------------+
+  | ImageProcessor::ProcessBlock returns  | Requestor calls Abort. All       |
+  | error                                 | per-component AbortActions run.  |
+  |                                       | No reboot.                       |
+  +---------------------------------------+----------------------------------+
+  | Per-component ApplyAction fails       | Dispatcher calls                 |
+  |                                       | AbortAllProcessors and SKIPS     |
+  |                                       | esp_ota_set_boot_partition. Old  |
+  |                                       | firmware still active on reboot. |
+  +---------------------------------------+----------------------------------+
+  | Coproc Apply OK, app Apply fails      | (rare; flash erase failure)      |
+  |                                       | Coproc has new fw, host has old. |
+  |                                       | Boot-time consistency check on   |
+  |                                       | host should detect mismatch and  |
+  |                                       | re-flash coproc from rescue blob.|
+  +---------------------------------------+----------------------------------+
+  | New app crashes during boot           | ESP-IDF anti-rollback restores   |
+  | (before ConfirmCurrentImage)          | previous slot. Old firmware boots|
+  |                                       | next reboot. NotifyUpdateApplied |
+  |                                       | never sent -> Provider knows     |
+  |                                       | install failed.                  |
+  +---------------------------------------+----------------------------------+
+  | Power loss mid-download               | OTA partition partly written.    |
+  |                                       | Boot path unaffected (active     |
+  |                                       | partition still flagged          |
+  |                                       | bootable). Next boot resumes old |
+  |                                       | firmware; new query restarts OTA.|
+  +---------------------------------------+----------------------------------+
+  | Power loss after esp_ota_set_boot_    | Bootloader picks new slot. If    |
+  | partition, before reboot              | new image boots OK and confirms, |
+  |                                       | done. If not, rollback.          |
+  +---------------------------------------+----------------------------------+
+
+================================================================================
+12. REPO MAP — WHERE EVERYTHING LIVES
+================================================================================
+
+  src/app/clusters/ota-provider/
+      OTAProviderCluster.{h,cpp}        Provider cluster server.
+      ota-provider-delegate.h           Application interface.
+      OTAProviderUserConsentDelegate.h
+      DefaultOTAProviderUserConsent.h
+
+  src/app/clusters/ota-requestor/
+      OTARequestorCluster.{h,cpp}       Requestor cluster server (data model).
+      OTARequestorAttributes.{h,cpp}    Attribute storage.
+      OTARequestorInterface.h           Core state-machine interface.
+      DefaultOTARequestor.{h,cpp}       Default state machine implementation.
+      OTARequestorDriver.h              Policy interface.
+      DefaultOTARequestorDriver.{h,cpp} Default policy.
+      ExtendedOTARequestorDriver.{h,cpp}Richer policy variant.
+      OTADownloader.h                   Transport interface.
+      BDXDownloader.{h,cpp}             BDX transport implementation.
+      OTARequestorStorage.h             Persistence interface.
+      DefaultOTARequestorStorage.{h,cpp}NVS-backed default.
+      OTARequestorUserConsentDelegate.h
+      DefaultOTARequestorUserConsent.h
+      README.md                         Requestor design overview.
+
+  src/include/platform/
+      OTAImageProcessor.h               Persistence interface
+                                        (abstract; per-platform impl).
+
+  src/lib/core/
+      OTAImageHeader.{h,cpp}            File-format header + parser.
+
+  src/protocols/bdx/
+      (BDX state machine, frames, TransferSession, ...)
+
+  src/platform/<platform>/
+      OTAImageProcessorImpl.{h,cpp}     Single-image implementation.
+
+  src/platform/silabs/multi-ota/        Silabs TLV multi-image processor.
+  src/platform/nxp/common/ota/          NXP TLV multi-image processor.
+  src/platform/nrfconnect/              Nordic dfu_multi_image processor.
+  src/platform/ESP32/multi-ota/         (this directory) — design doc only;
+                                        code to be written.
+
+  src/app/
+      ota_image_tool.py                 .ota file packaging tool.
+
+  examples/ota-provider-app/            Reference Provider implementations.
+      linux/main.cpp
+      ...
+
+  examples/ota-requestor-app/           Reference Requestor implementation.
+      linux/main.cpp
+
+  examples/platform/esp32/ota/          ESP32 wiring example.
+
+================================================================================
+13. BUILD FLAGS & WIRING (ESP32)
+================================================================================
+
+  GN args (typically in args.gni or per-board sdkconfig):
+
+    chip_enable_ota_requestor       = true        # Layers 1-5 plus single-image
+                                                   # OTAImageProcessorImpl by default.
+    chip_enable_multi_ota_requestor = true        # Switch Layer 6 to multi-image
+                                                   # dispatcher (this directory).
+    chip_enable_ota_provider        = false       # only true if your device
+                                                   # acts as a Provider (e.g. hub).
+
+  ESP-IDF sdkconfig.defaults:
+
+    CONFIG_PARTITION_TABLE_TWO_OTA           = y   # ota_0 + ota_1 partitions.
+    CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE    = y   # safety net for failed boots.
+    CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK      = y   # block downgrade attacks.
+
+  Application startup wiring (simplified, in app_main / AppTask::Init):
+
+    // Storage
+    static DefaultOTARequestorStorage sOtaStorage;
+    sOtaStorage.Init(server.GetPersistentStorage());
+
+    // Image processor (single-image OR multi-image dispatcher; same iface)
+    auto & sImageProcessor = OTAMultiImageProcessorImpl::GetDefaultInstance();
+    sImageProcessor.SetOTADownloader(&sBdxDownloader);
+
+    // BDX downloader
+    static BDXDownloader sBdxDownloader;
+    sBdxDownloader.SetImageProcessorDelegate(&sImageProcessor);
+
+    // Driver
+    static DefaultOTARequestorDriver sOtaDriver;
+
+    // Requestor (state machine)
+    static DefaultOTARequestor sOtaRequestor;
+    sOtaRequestor.Init(server, sOtaStorage, sOtaDriver, sBdxDownloader);
+    sOtaDriver.Init(&sOtaRequestor, &sImageProcessor);
+
+    // Make it discoverable as the global instance
+    SetRequestorInstance(&sOtaRequestor);
+
+    // Now initialize the dispatcher (registers all per-component processors)
+    sImageProcessor.Init(&sBdxDownloader);
+
+================================================================================
+14. GLOSSARY
+================================================================================
+
+  BDX                  Bulk Data Exchange. Matter's native streaming
+                       protocol used to transfer the .ota file bytes.
+                       src/protocols/bdx/.
+
+  Catalog              (Future) Pre-fetched manifest at the start of the
+                       OTA payload listing all components, their offsets,
+                       hashes, and signatures. Not in spec; design idea.
+
+  Dispatcher           In multi-image OTA: the OTAMultiImageProcessorImpl
+                       singleton that parses TLV headers and routes bytes
+                       to per-component processors.
+
+  Driver               OTARequestorDriver. The policy layer that decides
+                       when to query, download, apply, retry.
+
+  fileDesignator       Opaque string identifying the file to fetch via
+                       BDX. Provider returns it in QueryImageResponse;
+                       Requestor passes it back in BDX SendInit.
+
+  Image processor      Per-platform component that turns BDX bytes into
+                       installed firmware. Implements
+                       OTAImageProcessorInterface.
+
+  ProviderLocation     (FabricIndex, NodeID, Endpoint) tuple identifying
+                       a Matter node that hosts firmware files.
+
+  RCP                  Radio Co-Processor. A secondary chip running radio
+                       firmware (e.g. OpenThread RCP), connected over UART
+                       or SPI to a host MCU running Matter.
+
+  Requestor            The Matter device being updated. Hosts the OTA
+                       Software Update Requestor cluster.
+
+  Provider             The Matter node hosting .ota files. Hosts the OTA
+                       Software Update Provider cluster.
+
+  TLV (in this doc)    Tag-Length-Value framing inside the OTA payload
+                       used by Silabs/NXP/our ESP32 multi-image design.
+                       NOT the same as Matter-TLV (the cluster encoding).
+
+  Update token         Opaque bytes returned by Provider in QueryImageResp
+                       and replayed by Requestor in ApplyUpdateRequest /
+                       NotifyUpdateApplied. Lets Provider correlate the
+                       three calls into one logical session.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

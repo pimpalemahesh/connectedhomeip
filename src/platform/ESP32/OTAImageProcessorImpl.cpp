@@ -187,10 +187,10 @@ esp_err_t OTAImageProcessorImpl::VerifyHeaderData(const uint8_t * buf, size_t si
             memcpy(patchHeader + headerDataRead, buf, *index);
             if (!VerifyPatchHeader(patchHeader))
             {
+                headerDataRead = 0;
                 return ESP_ERR_INVALID_VERSION;
             }
             headerDataRead      = 0;
-            *index              = PATCH_HEADER_SIZE;
             patchHeaderVerified = true;
         }
     }
@@ -264,9 +264,15 @@ esp_err_t OTAImageProcessorImpl::DeltaOTAWriteCallback(const uint8_t * buf, size
                 return ESP_ERR_INVALID_VERSION;
             }
             imageProcessor->chipIdVerified = true;
+            headerDataRead                 = 0;
 
             // Write data in headerData buffer.
-            return esp_ota_write(imageProcessor->mOTAUpdateHandle, headerData, IMG_HEADER_LEN);
+            esp_err_t err = esp_ota_write(imageProcessor->mOTAUpdateHandle, headerData, IMG_HEADER_LEN);
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "esp_ota_write failed (%s)!", esp_err_to_name(err));
+                return err;
+            }
         }
     }
 

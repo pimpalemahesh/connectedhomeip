@@ -7,7 +7,7 @@
 ## 1. Overview
 
 The Matter OTA Requestor today downloads a single binary per OTA session and
-hands every byte to one `OTAImageProcessorInterface` implementation. This is
+hands every byte to one OTA image processor implementation. This is
 sufficient for devices where only the host firmware changes.
 
 Modern IoT products routinely contain multiple programmable components: a
@@ -31,7 +31,7 @@ beyond two small fixes documented in §15.
 | Term | Definition |
 |---|---|
 | **Bundle** | A single `.ota` file containing the `MultiImageHeader`, one `SubImageHeader` per component, and all component binaries concatenated. |
-| **Main Image Processor** | The `OTAImageProcessorInterface` implementation the Matter OTA Requestor calls. Owns the full download lifecycle and contains the Dispatcher. |
+| **Main Image Processor** | The OTA image processor implementation the Matter OTA Requestor calls. Owns the full download lifecycle and contains the Dispatcher. |
 | **Dispatcher** | The routing engine inside the Main Image Processor. Parses the bundle header, maintains the `imageId → sub-processor` map, and routes or skips each component's bytes. |
 | **Sub Image Processor** | An application-provided handler for one component. Implements `IsReadyForOTA()`, `Init()`, and `Write()`. |
 | **Image ID** | A `uint8_t` that identifies which sub-processor handles a given component. Stable ABI between firmware and packaging tool. |
@@ -201,7 +201,7 @@ Output: a single `.ota` file ready to serve from a Matter OTA Provider.
 The system is built from three roles:
 
 **Main Image Processor** — the single object the Matter OTA Requestor knows
-about. It implements `OTAImageProcessorInterface` and owns the entire OTA
+about. It implements the OTA image processor interface and owns the entire OTA
 download and apply cycle: it receives every byte block from the BDX session,
 drives the overall prepare → process → finalize → apply → abort lifecycle, and
 contains the Dispatcher.
@@ -247,7 +247,7 @@ defines the interface; applications provide the implementations.
 ```
    Matter OTA Requestor
           |
-          | OTAImageProcessorInterface
+          | OTA Image Processor Interface
           v
   +-------+------------------------------------------+
   |              Main Image Processor                 |
@@ -322,8 +322,8 @@ checks only; the OTA Requestor's update decision uses only the outer
 
 1. Provider announces availability; Requestor on device QueryImage's, discovers
    a higher version, and starts BDX.
-2. BDX calls into the Main Image Processor's `OTAImageProcessorInterface`
-   methods. This is identical to the single-image flow from the Requestor's
+2. BDX calls into the Main Image Processor via the standard OTA image processor
+   interface. This is identical to the single-image flow from the Requestor's
    perspective — the multi-image logic is entirely inside the Main Image
    Processor.
 
@@ -444,9 +444,11 @@ sub-processor interface.
    b. Every sub-processor entry recorded as `kNotReady` during the download
       is now verified to be at its expected version. If any `kNotReady` entry
       cannot be verified, confirmation is withheld.
-4. If either check fails, `ConfirmCurrentImage()` returns an error. The
-   platform rolls back to the previous firmware on the next reboot. The device
-   reverts to the old `softwareVersion` and the next OTA cycle can retry.
+4. If either check fails, `ConfirmCurrentImage()` returns an error. Before
+   triggering the rollback reboot, the Main Image Processor invokes the retry
+   policy hook (§5.7) so the platform can schedule a `QueryImage` re-trigger
+   for immediately after the rollback completes. The device reverts to the old
+   `softwareVersion` and the OTA window reopens.
 
 This extends the single-image confirmation flow with step 3b. The Main Image
 Processor retains the per-entry `OTAReadiness` map from the download session
@@ -455,7 +457,9 @@ check can evaluate it.
 
 > **Why this matters:** see §11.1. Confirming `softwareVersion` before all
 > components are verified permanently closes the OTA window for any skipped
-> components. The Provider will not offer the bundle again.
+> components. The Provider will not offer the bundle again. The active retry
+> mechanism (§5.7) ensures the device does not have to wait for the next
+> periodic query timer after a rollback.
 
 ### 5.6 Processor Readiness and `SkipData`
 
@@ -489,13 +493,78 @@ detecting and handling this (§7.4, §9.6). Do not skip a component unless the
 device can tolerate running the old version of that component alongside new
 versions of the others.
 
-#### `SkipData()` — current SDK state
+#### `SkipData()` — session layer requirements
 
-`BDXDownloader::SkipData()` exists in the SDK but is not called from any
-production code path. The Main Image Processor holds a reference to the
-downloader and can call it directly. One SDK fix is required before this can be
-used: the parameter is `uint32_t` (4 GB limit) but the BDX spec defines
-`BytesToSkip` as `uint64_t`. See §15.1 B1.
+The skip-data operation must be invokable by the Main Image Processor at any
+point during a download. The BDX spec defines the skip byte count as a 64-bit
+field; the session layer must honour that width to avoid overflow for large
+images. See §15.1 for the full requirements.
+
+### 5.7 Retry policy for incomplete cycles
+
+When a download session finishes with one or more `kNotReady` entries, the
+affected nodes were not updated this cycle. Without intervention the device will
+next attempt an update only when the periodic `QueryImage` timer fires — which
+can be many minutes away. If `softwareVersion` is confirmed prematurely it may
+never fire at all (see §11.1).
+
+To recover faster, the Main Image Processor can actively re-trigger `QueryImage`
+after a platform-chosen delay, without waiting for the periodic timer. The retry
+policy — when to retry, how many times, and with what backoff — is entirely the
+platform's responsibility and is expressed via an overridable operation on the
+Main Image Processor.
+
+#### Retry hook
+
+After any download session ends with at least one `kNotReady` entry, or after
+`ConfirmCurrentImage()` withholds confirmation, the Main Image Processor invokes
+the `OnPendingNodeUpdates` operation, passing two arguments:
+
+- **Pending image IDs** — the list of image IDs whose sub-processors returned
+  `kNotReady` this cycle. `kAlreadyUpToDate` entries are not included; they are
+  already verified and do not drive retries.
+- **Attempt count** — the number of times this operation has been invoked for
+  the current `softwareVersion`. The Main Image Processor increments this counter
+  and persists it across reboots so that post-rollback retries do not reset it.
+
+The platform implementation decides what to do:
+
+| Decision | Behaviour |
+|---|---|
+| Re-trigger immediately | Issue a new `QueryImage` before returning. |
+| Re-trigger after a fixed delay | Schedule a `QueryImage` to fire after a platform-chosen interval. |
+| Exponential backoff | Increase the delay geometrically with attempt count; e.g. `30s × 2^attemptCount`, capped at a maximum. |
+| Retry up to N times then stop | Compare attempt count against a platform-defined limit; stop scheduling and raise an alert when exceeded. |
+| Do nothing | Return without action — normal periodic `QueryImage` takes over. |
+
+The default behaviour is to do nothing. Platforms that require fast convergence
+for connected nodes must override this operation.
+
+#### When the hook is called
+
+| Event | Hook called? | Notes |
+|---|---|---|
+| Download completes; all entries `kReady` or `kAlreadyUpToDate` | No | Cycle was complete — no retry needed. |
+| Download completes; one or more entries `kNotReady` | **Yes** — before the apply step schedules a reboot | Platform can schedule a re-trigger for after the reboot. |
+| `ConfirmCurrentImage()` withholds confirmation (post-reboot) | **Yes** — before the rollback reboot | Re-trigger fires after rollback brings old `softwareVersion` back. |
+
+Calling the hook before the rollback reboot ensures the scheduled re-trigger
+fires on the next boot, immediately re-opening the OTA window rather than
+waiting for the periodic timer.
+
+#### Limits and failure cases
+
+- **Permanent unavailability.** If a node is decommissioned or has a hardware
+  fault, `IsReadyForOTA()` will always return `kNotReady`. The platform must
+  implement a max-retry limit and an alerting or exclusion mechanism for this
+  case; otherwise retries continue indefinitely. The attempt count is the natural
+  signal for detecting this.
+- **Node recovers between cycles.** If `IsReadyForOTA()` returned `kNotReady`
+  but the node recovers before the retry fires, the next full OTA cycle will
+  pick it up cleanly — no special handling needed.
+- **No impact on the BDX session in progress.** The retry hook runs after the
+  current BDX session has fully ended. It never interrupts or restarts a live
+  download.
 
 ---
 
@@ -504,7 +573,7 @@ used: the parameter is `uint32_t` (4 GB limit) but the BDX spec defines
 ```
 BDX layer (any thread)
    │
-   ├─ Main Image Processor :: ProcessBlock(block)
+   ├─ Main Image Processor (block received)
    │      │
    │      ├─ copy block to internal buffer
    │      └─ schedule work on Matter thread
@@ -582,8 +651,8 @@ framework provides **best-effort atomicity**:
 
 ### 8.1 This framework provides
 
--   The **Main Image Processor** implementing `OTAImageProcessorInterface` — the
-    single entry point the Matter OTA Requestor calls.
+-   The **Main Image Processor** implementing the standard OTA image processor
+    interface — the single entry point the Matter OTA Requestor calls.
 -   The **Dispatcher** — header parsing (`MultiImageHeader` +
     `SubImageHeader[]`), the `imageId → sub-processor` map, byte-level routing,
     and `SkipData()` for absent or not-ready entries.
@@ -760,8 +829,8 @@ chip_enable_multi_ota_requestor = true
 ```
 
 When disabled, the build uses the standard single-image processor. The two paths
-are mutually exclusive — at most one `OTAImageProcessorInterface` implementation
-can be linked.
+are mutually exclusive — at most one OTA image processor implementation can be
+linked.
 
 ### 10.2 Platform requirements
 
@@ -813,11 +882,11 @@ confirmed, the application must verify that every registered sub-processor's
 component is at its expected version (`SubImageHeader.version` for its image
 ID). Only if all components match should confirmation proceed.
 
-| Component verification result                                      | Action                                                                                                                                                         |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| All components at expected version                                 | Confirm `softwareVersion`. OTA cycle is complete.                                                                                                              |
-| One or more components not at expected version                     | Do **not** confirm. Platform rollback restores the previous primary firmware. Device reverts to old `softwareVersion`. Next OTA cycle retries the full bundle. |
-| Component was skipped because it was already at the target version | Counts as verified — no update was needed.                                                                                                                     |
+| Component verification result                                      | Action                                                                                                                                                                                       |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All components at expected version                                 | Confirm `softwareVersion`. OTA cycle is complete.                                                                                                                                            |
+| One or more components not at expected version                     | Do **not** confirm. Invoke the retry hook (§5.7). Platform rollback restores the previous primary firmware. Device reverts to old `softwareVersion`. Retry re-opens the OTA window.          |
+| Component was skipped because it was already at the target version | Counts as verified — no update was needed.                                                                                                                                                   |
 
 **Implication for `IsReadyForOTA()`:** A sub-processor returning `kNotReady`
 means that component will not be updated this cycle and **blocks**
@@ -826,6 +895,12 @@ means the component is already at the target version — it is skipped but count
 as verified, so confirmation can proceed. The `OTAReadiness` enum encodes this
 distinction directly; the confirmation logic needs no additional state
 inspection. See §9.2.
+
+**Recovering without waiting for the periodic timer:** When confirmation is
+withheld, the Main Image Processor invokes `OnPendingNodeUpdates` (§5.7) before
+the rollback reboot. The platform implementation can schedule a re-trigger so
+the device re-queries the Provider as soon as it comes back up on the old
+firmware, without waiting for the next periodic `QueryImage` timeout.
 
 ### 11.2 Recommended discipline
 
@@ -883,6 +958,19 @@ using stub sub-processors. Tests should cover:
     is now resolvable → verify confirmation re-evaluates the saved readiness map
     (persisted across reboot) and succeeds only when all entries are verified.
 
+**Retry policy tests:**
+
+-   Download ends with one `kNotReady` entry → verify `OnPendingNodeUpdates()`
+    is called with that image ID in `pendingImageIds` and `attemptCount = 1`.
+-   `OnPendingNodeUpdates` schedules a re-trigger; verify the re-trigger fires
+    after the configured delay and a new BDX session begins.
+-   `attemptCount` increments correctly across rollback reboots; verify NVS
+    persistence by simulating power-cycle between attempts.
+-   Platform sets `kMaxRetries = 3`; verify `OnPendingNodeUpdates()` stops
+    scheduling retries after the third call and raises an alert instead.
+-   `kAlreadyUpToDate` entry is **not** included in `pendingImageIds`; verify
+    it does not trigger a retry.
+
 ### 12.2 Integration tests
 
 A hardware- or emulator-based test that:
@@ -927,178 +1015,103 @@ previously running firmware after the failure.
 
 ## 14. References
 
--   Matter OTA Requestor interface: `src/include/platform/OTAImageProcessor.h`.
--   Matter OTA Downloader:
-    `src/app/clusters/ota-requestor/BDXDownloader.{h,cpp}`.
--   Matter OTA image tool: `src/app/ota_image_tool.py`.
+-   Matter specification — OTA Software Update cluster and BDX protocol.
+-   Matter OTA image tool — the standard `chip-ota-image-tool` used to wrap
+    payloads with the outer Matter OTA header.
 -   BDX protocol reference: `BDX.md` (this directory).
 
 ---
 
-## 15. Implementation Blockers and Required Code Changes
+## 15. Implementation Requirements
 
-This section documents what the current SDK does not support and what must be
-changed in common or platform code to implement the design described in this
-document.
+This section describes the requirements that an OTA session layer and platform
+layer must satisfy to implement the design described in this document. No
+specific programming language, API, or SDK is mandated — platforms choose their
+own implementation style.
 
-### 15.1 Current SDK Blockers
+### 15.1 OTA Session Layer Requirements
 
-#### B1 — `SkipData()` parameter is `uint32_t`
+#### R1 — Skip-data byte count must be 64-bit
 
-**File**: `src/app/clusters/ota-requestor/BDXDownloader.h/.cpp`
+The BDX specification defines `BlockQueryWithSkip.BytesToSkip` as a 64-bit
+unsigned integer. The OTA session layer's skip-data operation must accept a
+64-bit byte count. A 32-bit parameter overflows for any component image larger
+than ~4 GB. Any existing implementation that uses a 32-bit count must widen it
+before the Dispatcher can invoke it reliably.
 
-```cpp
-CHIP_ERROR BDXDownloader::SkipData(uint32_t numBytes)  // 4 GB limit
-```
+#### R2 — Skip-data must be invokable by the Main Image Processor
 
-The BDX spec defines `BlockQueryWithSkip.BytesToSkip` as `uint64_t`. A component
-image larger than ~4 GB would overflow this parameter. Change to `uint64_t`
-before calling `SkipData()` from the dispatcher.
+The Dispatcher calls skip-data during active byte-stream routing whenever a
+sub-processor returns `kNotReady` or `kAlreadyUpToDate`. The session layer must
+expose the skip-data operation so the Main Image Processor can call it directly
+at any point during a download, not only at block boundaries driven by the
+session layer itself.
 
-#### B2 — `SkipData()` is never called from any production path
+### 15.2 Platform Layer Requirements
 
-**File**: `src/app/clusters/ota-requestor/BDXDownloader.cpp` line 162
+#### R3 — Sub Image Processor interface: three operations
 
-The method exists and is fully implemented but has no callers. The entire
-`ProcessBlock` → `FetchNextData` path bypasses it. The dispatcher must call it
-explicitly when `IsReadyForOTA()` returns `kNotReady` or `kAlreadyUpToDate`.
+The Sub Image Processor interface must expose three operations:
 
-#### B3 — `OTAImageProcessorInterface` has no `IsReadyForOTA()` contract
+1. **Readiness query** (`IsReadyForOTA`) — returns `OTAReadiness`. Called once
+   before any bytes are delivered. Must return in milliseconds.
+2. **Initialisation** (`Init`) — called once with the full `SubImageHeader`
+   immediately before the first write, and only when the readiness query
+   returned `kReady`. The sub-processor must store at minimum the binary's
+   byte length from the header so it can self-track progress and detect the
+   last chunk.
+3. **Write** (`Write`) — called per chunk with raw binary bytes. The
+   Dispatcher guarantees exactly `length` bytes total across all calls, in
+   order, with no headers or framing.
 
-**File**: `src/include/platform/OTAImageProcessor.h`
+The default readiness is `kReady`. Implementations whose component is always
+present and always ready need only implement the write operation.
 
-The interface defines `PrepareDownload`, `ProcessBlock`, `Finalize`, `Apply`,
-`Abort`. There is no `IsReadyForOTA()`. Adding it as a virtual method with a
-default `return kReady` is backward-compatible — existing single-image
-implementations automatically opt in to always being ready.
+#### R4 — Dispatcher routing behaviour
 
-#### B4 — Single-image processor erases its storage destination at `PrepareDownload`
+For each `SubImageHeader` entry the Dispatcher must:
 
-The existing single-image processor erases its firmware storage destination
-immediately at `PrepareDownload`. This is correct for that processor and is not
-a blocker for the multi-image design — each sub-processor manages its own
-destination independently. Other sub-processors are not affected.
+1. Look up the registered sub-processor by `imageId`. Treat a missing
+   registration as `kNotReady`.
+2. Call the readiness query and record the result. The result is persisted for
+   use at `ConfirmCurrentImage()` time.
+3. If the result is `kNotReady` or `kAlreadyUpToDate`: invoke skip-data for
+   `entry.length` bytes and advance to the next entry.
+4. If the result is `kReady`: call the initialisation operation with the full
+   `SubImageHeader`, then feed chunks via the write operation until
+   `entry.length` bytes have been delivered. The Dispatcher owns the byte
+   counter and signals completion — the sub-processor does not.
 
-#### B5 — Existing single-image processor expects a Matter OTA header at byte 0
+#### R5 — Retry hook: `OnPendingNodeUpdates`
 
-The existing processor assumes the byte stream begins with the outer Matter OTA
-header. The multi-image Main Image Processor strips the outer header once and
-then delivers raw binary bytes to sub-processors. Sub-processors never see the
-outer header. Not a blocker for the multi-image design; only relevant if the
-single-image processor were reused for sub-image sessions (it should not be).
+The Main Image Processor must expose an overridable `OnPendingNodeUpdates`
+operation that platforms use to implement a retry policy. The operation receives:
 
----
+- The list of image IDs whose sub-processors returned `kNotReady` this cycle.
+- The attempt count — number of times this operation has been called for the
+  current `softwareVersion`, persisted across reboots.
 
-### 15.2 Required Common Code Changes
+The default behaviour is to do nothing (fall back to the periodic `QueryImage`
+timer). A platform override may schedule an immediate or delayed re-trigger,
+implement exponential backoff, enforce a max-retry limit, or raise an alert for
+persistent failures. The calling convention and scheduling mechanism are left to
+the platform.
 
-#### C1 — Add `IsReadyForOTA()` to `OTAImageProcessorInterface`
+### 15.3 Compatibility Notes
 
-**File**: `src/include/platform/OTAImageProcessor.h`
+#### N1 — Single-image processor storage erasure
 
-```cpp
-class OTAImageProcessorInterface {
-public:
-    virtual CHIP_ERROR PrepareDownload()              = 0;
-    virtual CHIP_ERROR Finalize()                     = 0;
-    virtual CHIP_ERROR Apply()                        = 0;
-    virtual CHIP_ERROR Abort()                        = 0;
-    virtual CHIP_ERROR ProcessBlock(ByteSpan & block) = 0;
+An existing single-image processor that erases its storage destination at the
+start of a download session is not affected by the multi-image design. Each sub-
+processor manages its own storage independently; no sub-processor is aware of
+what other sub-processors do.
 
-    // Default returns kReady (always ready) — backward-compatible.
-    virtual OTAReadiness IsReadyForOTA() { return OTAReadiness::kReady; }
-};
-```
+#### N2 — Single-image processor header expectations
 
-#### C2 — Fix `BDXDownloader::SkipData()` parameter type
-
-**File**: `src/app/clusters/ota-requestor/BDXDownloader.h/.cpp`
-
-Change:
-
-```cpp
-CHIP_ERROR SkipData(uint32_t numBytes);
-```
-
-To:
-
-```cpp
-CHIP_ERROR SkipData(uint64_t numBytes);
-```
-
-Also verify `BdxTransferSession::PrepareBlockQueryWithSkip` accepts `uint64_t`
-internally; update if needed.
-
----
-
-### 15.3 Required Platform Code Changes
-
-#### P1 — Sub Image Processor interface: `IsReadyForOTA()`, `Init()`, `Write()`
-
-Define the Sub Image Processor interface with three methods:
-
-```cpp
-class SubImageProcessor {
-public:
-    // Returns the readiness of this component for an OTA update.
-    // Must return in milliseconds. Default: always ready.
-    virtual OTAReadiness IsReadyForOTA() { return OTAReadiness::kReady; }
-
-    // Called once with the full SubImageHeader immediately before the first
-    // Write(). Sub-processor must store entry.length to track progress.
-    // Only called when IsReadyForOTA() returned kReady.
-    virtual CHIP_ERROR Init(const SubImageHeader & entry) = 0;
-
-    // Called per chunk. Receives exactly entry.length bytes total across all
-    // calls, in order, as raw binary data with no headers or framing.
-    virtual CHIP_ERROR Write(ByteSpan & block) = 0;
-};
-```
-
-#### P2 — Dispatcher: call `IsReadyForOTA()`, record result, route to `Init()` + `Write()`
-
-In the Dispatcher's routing loop, for each `SubImageHeader` entry:
-
-```cpp
-SubImageProcessor * processor = processorMap.Find(entry.imageId);
-OTAReadiness readiness = (processor != nullptr) ? processor->IsReadyForOTA()
-                                                : OTAReadiness::kNotReady;
-recordReadiness(entry.imageId, readiness);  // persisted for ConfirmCurrentImage
-
-if (readiness != OTAReadiness::kReady) {
-    downloader->SkipData(entry.length);  // kAlreadyUpToDate or kNotReady
-    continue;  // advance to next entry
-}
-
-processor->Init(entry);  // pass SubImageHeader before first Write
-
-// feed chunks until entry.length bytes delivered
-processor->Write(chunk);
-```
-
-#### P3 — Example application sub-processor
-
-```cpp
-OTAReadiness CoprocProcessor::IsReadyForOTA() {
-    // Must return in milliseconds — no blocking I/O.
-    if (IsCoprocAtExpectedVersion()) return OTAReadiness::kAlreadyUpToDate;
-    if (!QueryCoprocReady())          return OTAReadiness::kNotReady;
-    return OTAReadiness::kReady;
-}
-
-CHIP_ERROR CoprocProcessor::Init(const SubImageHeader & entry) {
-    mExpectedLength = entry.length;
-    mBytesReceived  = 0;
-    // Optionally store entry.sha256 for final integrity check.
-    return CHIP_NO_ERROR;
-}
-
-CHIP_ERROR CoprocProcessor::Write(ByteSpan & block) {
-    mBytesReceived += block.size();
-    bool isLastChunk = (mBytesReceived == mExpectedLength);
-    // Application decides what to do with these bytes.
-    return StreamOverUart(block, isLastChunk);
-}
-```
+An existing single-image processor that expects the outer Matter OTA header at
+the start of the byte stream is not compatible with the sub-processor `Write`
+contract. The Main Image Processor strips the outer header before any bytes
+reach a sub-processor. Sub-processors must not be written to re-parse it.
 
 ---
 
@@ -1112,8 +1125,8 @@ CHIP_ERROR CoprocProcessor::Write(ByteSpan & block) {
 | P2  | **Spec-compliant.** `BlockQueryWithSkip` (0x15) is a standard BDX message. Any compliant Provider handles it.                                                     |
 | P3  | **RAM stays constant.** All sub-processors share one block buffer. Registered sub-processors are just pointers in a map; no extra RAM per component.              |
 | P4  | **Independent retry semantics.** If `IsReadyForOTA()` returns `kNotReady` today, the next OTA cycle offers another attempt with no persistent state to manage.    |
-| P5  | **Minimal common code changes.** Only two changes needed outside the platform layer: add `IsReadyForOTA()` virtual and fix the `uint32_t` → `uint64_t` parameter. |
-| P6  | **Backward compatible.** Default `IsReadyForOTA()` returns `true`, so existing single-image processors are unaffected.                                            |
+| P5  | **Minimal session layer changes.** Only two requirements on the OTA session layer: skip-data must be invokable by the Main Image Processor, and its byte count must be 64-bit (§15.1). |
+| P6  | **Backward compatible.** Default `IsReadyForOTA()` returns `kReady`, so existing single-image processors are unaffected.                                          |
 
 #### Cons
 

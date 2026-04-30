@@ -1,0 +1,237 @@
+BDX Protocol — Plain English Guide
+
+  BDX (Bulk Data Exchange) is Matter's protocol for moving large blobs of data between two nodes. For OTA, it moves firmware from the Provider to the Requestor. Think of it as HTTP range requests but            
+  purpose-built for constrained IoT devices.
+                                                                                                                                                                                                                   
+  ---             
+  1. The Two Roles
+                  
+  ┌──────────┬─────────────────────────────────┐
+  │   Role   │          What it does           │                                                                                                                                                                   
+  ├──────────┼─────────────────────────────────┤
+  │ Sender   │ Has the data, sends blocks      │                                                                                                                                                                   
+  ├──────────┼─────────────────────────────────┤
+  │ Receiver │ Wants the data, receives blocks │                                                                                                                                                                   
+  └──────────┴─────────────────────────────────┘
+                                                                                                                                                                                                                   
+  But there's a second dimension — who starts the conversation:                                                                                                                                                    
+  
+  ┌───────────┬─────────────────────────────────────────────────┐                                                                                                                                                  
+  │   Title   │                     Meaning                     │
+  ├───────────┼─────────────────────────────────────────────────┤                                                                                                                                                  
+  │ Initiator │ Opens the BDX session (sends the first message) │
+  ├───────────┼─────────────────────────────────────────────────┤
+  │ Responder │ Answers the first message                       │
+  └───────────┴─────────────────────────────────────────────────┘                                                                                                                                                  
+  
+  These two dimensions are independent. In OTA, the Requestor (Receiver) is typically the Initiator — it sends ReceiveInit to the Provider saying "give me this file".                                             
+                  
+  ---                                                                                                                                                                                                              
+  2. All 11 Message Types
+                                                                                                                                                                                                                   
+  Handshake:
+    ReceiveInit    (0x01)  — Receiver→Sender: "I want data, here are my terms"                                                                                                                                     
+    SendInit       (0x02)  — Sender→Receiver: "I have data, here are my terms"                                                                                                                                     
+    ReceiveAccept  (0x03)  — Sender→Receiver: "OK, I'll send, here are the actual terms"                                                                                                                           
+    SendAccept     (0x04)  — Receiver→Sender: "OK, I'll receive"                                                                                                                                                   
+                                                                                                                                                                                                                   
+  Data transfer:                                                                                                                                                                                                   
+    BlockQuery     (0x10)  — Receiver→Sender: "send me the next block" (ReceiverDrive)
+    Block          (0x11)  — Sender→Receiver: "here is a block" (SenderDrive)                                                                                                                                      
+    BlockEOF       (0x12)  — Sender→Receiver: "here is the LAST block"                                                                                                                                             
+    BlockAck       (0x13)  — Receiver→Sender: "I got a block" (SenderDrive ack)                                                                                                                                    
+    BlockAckEOF    (0x14)  — Receiver→Sender: "I got the LAST block, we're done"                                                                                                                                   
+    BlockQueryWithSkip (0x15) — Receiver→Sender: "skip N bytes then send next block"                                                                                                                               
+                                                                                                                                                                                                                   
+  Termination:                                                                                                                                                                                                     
+    StatusReport   (0x40)  — Either side: "error / done"                                                                                                                                                           
+                                                                                                                                                                                                                   
+  The key insight: which messages appear in a session depends on the drive mode chosen during handshake.                                                                                                           
+                                                                                                                                                                                                                   
+  ---                                                                                                                                                                                                              
+  3. The Handshake — Where All Capabilities Are Negotiated
+                                                                                                                                                                                                                   
+  The Init message (either ReceiveInit or SendInit) contains a Range Control (RC) byte with bit flags, plus associated fields. This is where BDX's power lives.
+                                                                                                                                                                                                                   
+  Range Control Bits
+                                                                                                                                                                                                                   
+  Bit 0  RC[MDATA]     — metadata TLV attached to this Init message                                                                                                                                                
+  Bit 1  RC[STARTOFS]  — I want to start at a specific byte offset (not byte 0)                                                                                                                                    
+  Bit 2  RC[DEFLEN]    — I want exactly N bytes (not the whole file)                                                                                                                                               
+  Bit 3  RC[WIDERANGE] — Use 64-bit fields (for files > 4 GB)                                                                                                                                                      
+  Bit 4  RC[A_BIT]     — Async mode request (more on this below)                                                                                                                                                   
+                  
+  Associated Fields                                                                                                                                                                                                
+               
+  When RC[STARTOFS] is set:                                                                                                                                                                                        
+  - A STARTOFS field appears in the Init — it's the absolute byte offset where the download should begin
+  - Size: 4 bytes normally, 8 bytes if RC[WIDERANGE] is also set                                                                                                                                                   
+                                                                
+  When RC[DEFLEN] is set in ReceiveInit:                                                                                                                                                                           
+  - A PLEN (Proposed Length) field appears — the Receiver says "I want at most this many bytes"                                                                                                                    
+  - In ReceiveAccept, the Sender echoes back LEN — the exact number of bytes it will send                                                                                                                          
+                                                                                                                                                                                                                   
+  Combined: RC[STARTOFS] + RC[DEFLEN] = exact byte range download                                                                                                                                                  
+                  
+  ReceiveInit:                                                                                                                                                                                                     
+    StartOffset    = 10000   ← start here
+    ProposedLength = 5000    ← I want these many bytes                                                                                                                                                             
+                  
+  ReceiveAccept:                                                                                                                                                                                                   
+    Length         = 5000    ← confirmed, you'll get exactly bytes [10000, 15000)
+                                                                                                                                                                                                                   
+  This is the foundation of the pull model for multi-image OTA.
+                                                                                                                                                                                                                   
+  ---             
+  4. Drive Modes — Who Controls the Pacing
+                                                                                                                                                                                                                   
+  Negotiated via TransferControl flags (PTC = Proposed, TC = actual agreed value):
+                                                                                                                                                                                                                   
+  ReceiverDrive (what the ESP32 SDK uses today):                                                                                                                                                                   
+  Receiver → BlockQuery    → Sender                                                                                                                                                                                
+  Receiver ←    Block      ← Sender                                                                                                                                                                                
+  Receiver → BlockQuery    → Sender
+  Receiver ←    Block      ← Sender                                                                                                                                                                                
+  ...                                                                                                                                                                                                              
+  Receiver ←    BlockEOF   ← Sender                                                                                                                                                                                
+  Receiver → BlockAckEOF   → Sender   ← session complete                                                                                                                                                           
+  The Receiver controls flow — it asks for each block. Good for flow-control on constrained devices.
+                                                                                                                                                                                                                   
+  SenderDrive:                                                                                                                                                                                                     
+  Sender →  Block      → Receiver                                                                                                                                                                                  
+  Sender →  Block      → Receiver                                                                                                                                                                                  
+  ...                            
+  Receiver ← BlockAck  ← (required acks)                                                                                                                                                                           
+  Sender →  BlockEOF   → Receiver       
+  Receiver ← BlockAckEOF                                                                                                                                                                                           
+  The Sender pushes blocks without waiting. Higher throughput, less control.                                                                                                                                       
+                                                                                                                                                                                                                   
+  Asynchronous mode (RC[A_BIT]):                                                                                                                                                                                   
+  - Removes the strict request/response lock-step
+  - Sender can pipeline multiple blocks before getting acks                                                                                                                                                        
+  - Useful when network RTT is the bottleneck              
+                                                                                                                                                                                                                   
+  In OTA today: SDK always uses ReceiverDrive, A_BIT=0.                                                                                                                                                            
+                                                                                                                                                                                                                   
+  ---                                                                                                                                                                                                              
+  5. BlockQueryWithSkip — In-Session Forward Jump                                                                                                                                                                  
+                                                 
+  // Message 0x15
+  struct BlockQueryWithSkip {                                                                                                                                                                                      
+      uint32_t  BlockCounter;   // which block counter we expect next
+      uint64_t  BytesToSkip;    // skip this many bytes forward first                                                                                                                                              
+  };                                                                                                                                                                                                               
+                                                                                                                                                                                                                   
+  The Receiver sends this instead of a normal BlockQuery. The Sender skips BytesToSkip bytes past its current position before sending the next block.                                                              
+                  
+  Key limitations:                                                                                                                                                                                                 
+  - Forward only — you cannot go back
+  - Relative to current position — not absolute                                                                                                                                                                    
+  - The Sender's skip must be exact — it cannot partially skip
+                                                                                                                                                                                                                   
+  Use case: "I received bytes 0–9999, I know bytes 10000–19999 are not for me, skip to 20000."                                                                                                                     
+                                                                                                                                                                                                                   
+  SDK today: BDXDownloader::SkipData() exists and wraps PrepareBlockQueryWithSkip(), but nothing ever calls it.                                                                                                    
+                                                                                                                                                                                                                   
+  ---                                                                                                                                                                                                              
+  6. MDATA — Application Metadata in the Handshake
+                                                                                                                                                                                                                   
+  When RC[MDATA] is set, a TLV blob is attached to the Init or Accept message. This travels with zero extra round trips.
+                                                                                                                                                                                                                   
+  ReceiveInit:    
+    RC[MDATA] = 1                                                                                                                                                                                                  
+    MDATA = <TLV blob with anything you want>
+      e.g., { imageId: "co_processor_v2", requestorFirmwareVersion: "1.4.0" }                                                                                                                                      
+                                                                                                                                                                                                                   
+  The Sender can also put MDATA in the Accept response.                                                                                                                                                            
+                                                                                                                                                                                                                   
+  Use case for multi-image OTA: The manifest download step can put the sub-image catalog in Accept MDATA — the Requestor gets the index before any blocks arrive.                                                  
+                  
+  ---                                                                                                                                                                                                              
+  7. Version Negotiation
+                        
+  ReceiveInit carries MinVersion and MaxVersion (both uint8). The Sender picks any version in [MinVersion, MaxVersion] and echoes its choice in ReceiveAccept. Current BDX version is 0.
+                                                                                                                                                                                                                   
+  ---                                                                                                                                                                                                              
+  8. Status Codes Relevant to OTA                                                                                                                                                                                  
+                                                                                                                                                                                                                   
+  ┌────────┬────────────────────────────────────────────────────────────────────┐
+  │  Code  │                              Meaning                               │
+  ├────────┼────────────────────────────────────────────────────────────────────┤
+  │ 0x0000 │ No error / success                                                 │
+  ├────────┼────────────────────────────────────────────────────────────────────┤
+  │ 0x0012 │ Transfer complete — normal termination                             │                                                                                                                                  
+  ├────────┼────────────────────────────────────────────────────────────────────┤                                                                                                                                  
+  │ 0x0051 │ Length too large — Receiver asked for more than Sender can provide │                                                                                                                                  
+  ├────────┼────────────────────────────────────────────────────────────────────┤                                                                                                                                  
+  │ 0x0052 │ START_OFFSET_NOT_SUPPORTED — Sender cannot seek to that offset     │
+  ├────────┼────────────────────────────────────────────────────────────────────┤                                                                                                                                  
+  │ 0x0011 │ Unknown file designator                                            │
+  ├────────┼────────────────────────────────────────────────────────────────────┤                                                                                                                                  
+  │ 0x0053 │ Length mismatch — actual bytes don't match declared length         │
+  ├────────┼────────────────────────────────────────────────────────────────────┤                                                                                                                                  
+  │ 0x0054 │ File designator too large                                          │
+  └────────┴────────────────────────────────────────────────────────────────────┘                                                                                                                                  
+                  
+  0x0052 is the key one: if the Provider's OTA file is stored in a way that doesn't support seeking (e.g., streaming from a remote HTTP source without range support), it will respond with this and the Requestor 
+  must start from offset 0 or abort.
+                                                                                                                                                                                                                   
+  ---             
+  9. Full Picture: What the SDK Uses vs. What the Spec Supports
+                                                                                                                                                                                                                   
+  ┌───────────────────────────────┬─────────────────┬────────────────────────────────┬────────────────────────┐
+  │          Capability           │  Spec supports  │           SDK today            │          Gap           │                                                                                                    
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ ReceiverDrive                 │ ✓               │ ✓ used                         │ —                      │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ SenderDrive                   │ ✓               │ negotiated away                │ could enable           │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ StartOffset (RC[STARTOFS])    │ ✓               │ ✗ hardcoded 0                  │ implement              │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ DefiniteLength (RC[DEFLEN])   │ ✓               │ ✗ never set                    │ implement              │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ BlockQueryWithSkip            │ ✓               │ ✗ SkipData() exists but unused │ wire up                │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ MDATA in Init                 │ ✓               │ ✗                              │ implement              │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ MDATA in Accept               │ ✓               │ ✗                              │ implement              │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ WIDERANGE (64-bit)            │ ✓               │ ✗                              │ implement              │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ Async mode                    │ ✓               │ ✗                              │ optional               │
+  ├───────────────────────────────┼─────────────────┼────────────────────────────────┼────────────────────────┤                                                                                                    
+  │ Multiple BDX sessions per OTA │ ✓ (spec allows) │ ✗ state machine blocks it      │ implement orchestrator │
+  └───────────────────────────────┴─────────────────┴────────────────────────────────┴────────────────────────┘                                                                                                    
+                  
+  The three capabilities marked implement are the ones your multi-image pull model needs.                                                                                                                          
+                  
+  ---                                                                                                                                                                                                              
+  10. How This Maps to Multi-Image OTA Pull Model
+                                                                                                                                                                                                                   
+  With full BDX spec usage, each sub-image download becomes:
+                                                                                                                                                                                                                   
+  Session 1 — Manifest download
+    ReceiveInit(file="ota_v2.bin", startOffset=0, proposedLength=512, MDATA={requestorId})                                                                                                                         
+    ReceiveAccept(length=512, MDATA={catalog: [{id:"main",offset:512,len:200000},                                                                                                                                  
+                                                {id:"coprocessor",offset:200512,len:50000}]})                                                                                                                      
+    → download 512 bytes (header only)                                                                                                                                                                             
+                                                                                                                                                                                                                   
+  Node signals readiness (app-level, out-of-band to BDX)                                                                                                                                                           
+                                                                                                                                                                                                                   
+  Session 2 — Main firmware                                                                                                                                                                                        
+    ReceiveInit(file="ota_v2.bin", startOffset=512, proposedLength=200000)
+    ReceiveAccept(length=200000)                                                                                                                                                                                   
+    → download exactly bytes [512, 200512)                                                                                                                                                                         
+  
+  Session 3 — Co-processor firmware (when that node is ready)                                                                                                                                                      
+    ReceiveInit(file="ota_v2.bin", startOffset=200512, proposedLength=50000)
+    ReceiveAccept(length=50000)                                                                                                                                                                                    
+    → download exactly bytes [200512, 250512)
+                                                                                                                                                                                                                   
+  Each session is spec-compliant BDX. The Provider just needs to support seeking — which a standard HTTP range-request-backed provider can do with Content-Range.                                                  
+  
+  The SDK changes needed are surgical:                                                                                                                                                                             
+  1. DefaultOTARequestor::StartDownload — accept and pass StartOffset and MaxLength into TransferInitData
+  2. BDXDownloader — expose a way to declare a byte limit so it stops after proposedLength bytes                                                                                                                   
+  3. OTAImageProcessorImpl — skip esp_ota_begin() erase if resuming (or accept that each sub-image goes to a separate partition)
+  4. An orchestrator above the state machine that sequences sessions after node readiness signals 

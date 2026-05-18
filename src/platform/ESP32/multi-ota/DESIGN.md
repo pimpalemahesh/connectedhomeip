@@ -22,7 +22,7 @@ component firmwares into one `.ota` file with a structured header. The host
 device downloads the bundle once, routes each component's bytes to the right
 handler, and skips components that are not ready or do not need updating — all
 without any changes to the OTA Requestor, Provider protocol, or BDX layer
-beyond two small fixes documented in §15.
+beyond two small fixes documented in §14.
 
 ---
 
@@ -60,10 +60,10 @@ first, then routes each binary's bytes to the correct processor — using
 | MultiImageHeader  (8 bytes)                             |
 |   magic(4)  version(2)  num_images(2)                   |
 +---------------------------------------------------------+
-| SubImageHeader[0]  (80 bytes)                              |
-| SubImageHeader[1]  (80 bytes)                              |
+| SubImageHeader[0]  (60 bytes)                              |
+| SubImageHeader[1]  (60 bytes)                              |
 | ...                                                     |
-| SubImageHeader[N-1]  (80 bytes)                            |
+| SubImageHeader[N-1]  (60 bytes)                            |
 +---------------------------------------------------------+
 | Binary 0 data   (at SubImageHeader[0].offset bytes)        |
 +---------------------------------------------------------+
@@ -95,7 +95,7 @@ Total header size on the wire:
 
 ```
 headerBytes = sizeof(MultiImageHeader) + numImages * sizeof(SubImageHeader)
-             = 8 + numImages * 80
+             = 8 + numImages * 60
 ```
 
 The dispatcher accumulates exactly `headerBytes` before it switches from
@@ -103,33 +103,29 @@ header-parsing mode to data-routing mode.
 
 ### 3.3 Per-image header
 
-Each `SubImageHeader` is a fixed 80 bytes regardless of the binary it describes:
+Each `SubImageHeader` is a fixed 60 bytes regardless of the binary it describes:
 
 ```c
-#define SUB_IMAGE_FLAG_SHA256_PRESENT  (1u << 0)  // sha256 field is valid
-
 typedef struct __attribute__((packed)) {
     uint8_t  imageId;       // identifies which processor handles this binary (§3.4)
     uint32_t version;       // version of this binary
     uint64_t offset;        // byte offset of binary data within the OTA payload
     uint64_t length;        // byte count of the binary
-    uint32_t flags;         // SUB_IMAGE_FLAG_SHA256_PRESENT | future flags
-    uint8_t  sha256[32];    // SHA-256 digest of the binary (valid if FLAG present)
-    uint8_t  reserved[23];  // must be zero; reserved for future extensions
-} SubImageHeader;              // 80 bytes: 1+4+8+8+4+32+23
+    uint8_t  sha256[32];    // SHA-256 digest of the binary (mandatory)
+    uint8_t  reserved[7];   // must be zero; reserved for future extensions
+} SubImageHeader;              // 60 bytes: 1+4+8+8+32+7
 ```
 
 Field semantics:
 
 | Field      | Notes                                                                                                                                                                                   |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `imageId`  | Matched against registered processors at runtime. A bundle may carry `imageId`s not registered on a given device — those entries are skipped via `SkipData()`.                          |
-| `version`  | Per-binary version number. Informational and for sanity checks only; the OTA Requestor's update decision is driven by the outer Matter `softwareVersion` alone.                         |
-| `offset`   | Absolute byte offset from payload start. Enables the dispatcher to jump directly to each binary with a single `SkipData()` call rather than streaming all preceding bytes.              |
-| `length`   | Exact byte count. Used both to know when to stop feeding the processor and to compute the skip distance for unneeded binaries.                                                          |
-| `flags`    | `SUB_IMAGE_FLAG_SHA256_PRESENT` (bit 0): `sha256` field is populated. Other bits reserved and must be zero.                                                                             |
-| `sha256`   | Optional SHA-256 of the binary at `[offset, offset+length)`. When present the sub-processor should verify this digest before accepting the update as complete. Zero-filled when absent. |
-| `reserved` | Must be zero on write. Readers must ignore. Enables future field additions without a `version` bump.                                                                                    |
+| `imageId`  | Matched against registered processors at runtime. A bundle may carry `imageId`s not registered on a given device — those entries are skipped via `SkipData()`.             |
+| `version`  | Per-binary version number. Informational and for sanity checks only; the OTA Requestor's update decision is driven by the outer Matter `softwareVersion` alone.             |
+| `offset`   | Absolute byte offset from payload start. Enables the dispatcher to jump directly to each binary with a single `SkipData()` call rather than streaming all preceding bytes. |
+| `length`   | Exact byte count. Used both to know when to stop feeding the processor and to compute the skip distance for unneeded binaries.                                              |
+| `sha256`   | Mandatory SHA-256 of the binary at `[offset, offset+length)`. The sub-processor must verify this digest before accepting the update as complete.                            |
+| `reserved` | Must be zero on write. Readers must ignore. Enables future field additions without a `version` bump.                                                                        |
 
 > **Alignment note.** `SubImageHeader` is a packed struct. The `version` field
 > sits at byte offset 1 and is therefore not naturally 4-byte aligned. All
@@ -168,22 +164,21 @@ an ABI break for that product.
 
 ### 3.5 Packaging tool
 
-A packaging tool takes a manifest listing each binary's image ID, version, path,
-and whether to include a SHA-256 digest:
+A packaging tool takes a manifest listing each binary's image ID, version, and path:
 
 ```json
 {
     "ota_version": "0.0.2",
     "images": [
-        { "id": 1, "version": 14, "path": "build/app.bin", "sha256": true },
-        { "id": 128, "version": 17, "path": "build/coproc.bin", "sha256": true }
+        { "id": 1, "version": 14, "path": "build/app.bin" },
+        { "id": 128, "version": 17, "path": "build/coproc.bin" }
     ]
 }
 ```
 
 The tool:
 
-1. Reads each binary, computes SHA-256 if requested.
+1. Reads each binary and computes its SHA-256 digest.
 2. Computes each binary's `offset` (header section size + sum of preceding
    binary sizes, with any desired alignment padding).
 3. Serialises the `MultiImageHeader` + `SubImageHeader[]` into the header blob.
@@ -224,7 +219,7 @@ Three methods form the contract:
     I/O.
 -   `Init(entry)` — called once with the full `SubImageHeader` immediately
     before the first `Write()`. Gives the sub-processor `entry.length` (total
-    bytes to expect), `entry.version`, `entry.flags`, and `entry.sha256` upfront.
+    bytes to expect), `entry.version`, and `entry.sha256` upfront.
 -   `Write(block)` — called per chunk. The application does whatever is needed
     with the bytes. The sub-processor knows it has received the last chunk when
     its running byte total reaches `entry.length` (set by `Init()`).
@@ -306,8 +301,8 @@ may have at most one registered processor; duplicate registration is an error.
 
 1. CI builds each binary independently (primary firmware, co-processor firmware,
    any other components).
-2. The packaging tool reads the manifest (§3.5), computes SHA-256 per binary if
-   requested, calculates offsets, serialises the `MultiImageHeader` +
+2. The packaging tool reads the manifest (§3.5), computes SHA-256 per binary,
+   calculates offsets, serialises the `MultiImageHeader` +
    `SubImageHeader[]`, concatenates all binaries, and wraps the result with the
    outer Matter OTA header. Output: a single `.ota` bundle.
 3. The `.ota` bundle is uploaded to the OTA Provider (test or production).
@@ -498,7 +493,7 @@ versions of the others.
 The skip-data operation must be invokable by the Main Image Processor at any
 point during a download. The BDX spec defines the skip byte count as a 64-bit
 field; the session layer must honour that width to avoid overflow for large
-images. See §15.1 for the full requirements.
+images. See §14.1 for the full requirements.
 
 ### 5.7 Retry policy for incomplete cycles
 
@@ -748,9 +743,8 @@ Rules:
 **`Init(const SubImageHeader & entry)`** — called once immediately before the
 first `Write()`, only when `IsReadyForOTA()` returned `kReady`. The sub-processor
 must store at minimum `entry.length` to self-track progress. It should also
-record `entry.version` for cross-verification and, if `SUB_IMAGE_FLAG_SHA256_PRESENT`
-is set in `entry.flags`, store `entry.sha256` to verify integrity on the last
-chunk.
+record `entry.version` for cross-verification and store `entry.sha256` to verify
+integrity on the last chunk.
 
 **Write method** — called per chunk. The Dispatcher guarantees:
 - Chunks arrive sequentially from byte 0 of the binary's data.
@@ -758,9 +752,9 @@ chunk.
 - Chunks contain raw binary bytes only — no headers or framing.
 
 The sub-processor detects its last chunk by comparing its running byte total
-against `entry.length` (set in `Init()`). Commit, bus-transfer completion, and
-SHA-256 verification should happen on or after the last chunk. What the
-application does with the bytes is entirely its own responsibility.
+against `entry.length` (set in `Init()`). SHA-256 verification, commit, and
+bus-transfer completion must happen on the last chunk. What the application does
+with the bytes is entirely its own responsibility.
 
 ### 9.3 Non-blocking writes
 
@@ -940,6 +934,8 @@ using stub sub-processors. Tests should cover:
 -   No registered processor for an image ID: same skip behaviour as `kNotReady`.
 -   `Init()` receives the correct `SubImageHeader` fields before the first
     `Write()` call.
+-   SHA-256 digest mismatch on the last chunk: verify the sub-processor rejects
+    the update and `Finalize()` returns an error.
 -   `Apply()` failure: verify the device does not reboot and stays on the old
     firmware.
 
@@ -991,45 +987,20 @@ previously running firmware after the failure.
 
 ## 13. Open Questions / Future Work
 
-1. **Encryption.** Per-binary encryption is not in v1. The `flags` field in
-   `SubImageHeader` reserves bit space for an encryption-present flag.
-   Decryption can be added inside the sub-processor's write method without
-   changing the Dispatcher or the file format.
-2. **Per-binary signatures.** The outer Matter OTA file is integrity-protected
-   by the OTA Provider's signing. A manufacturer that wants a second-layer
-   signature over an individual binary can verify it inside the write method
-   after accumulating all bytes. Not built in v1.
-3. **Resume on disconnect.** BDX retries restart from byte 0; there is no
+1. **Resume on disconnect.** BDX retries restart from byte 0; there is no
    per-binary progress checkpoint. If the device reboots mid-download it
    re-downloads from the beginning. Acceptable for most products.
-4. **Bootloader and partition-table updates.** Writing the bootloader or
-   partition table requires platform-specific safeguards. Left out of v1.
-5. **Concurrent DFU sources.** If a product also exposes serial DFU or USB DFU,
-   a mutual-exclusion guard should prevent two DFU sessions from running
-   simultaneously.
-6. **Reboot delay tuning.** v1 uses a fixed delay to allow Matter subscriptions
-   to be torn down cleanly before restart. Make this configurable for products
-   that need a different value.
 
 ---
 
-## 14. References
-
--   Matter specification — OTA Software Update cluster and BDX protocol.
--   Matter OTA image tool — the standard `chip-ota-image-tool` used to wrap
-    payloads with the outer Matter OTA header.
--   BDX protocol reference: `BDX.md` (this directory).
-
----
-
-## 15. Implementation Requirements
+## 14. Implementation Requirements
 
 This section describes the requirements that an OTA session layer and platform
 layer must satisfy to implement the design described in this document. No
 specific programming language, API, or SDK is mandated — platforms choose their
 own implementation style.
 
-### 15.1 OTA Session Layer Requirements
+### 14.1 OTA Session Layer Requirements
 
 #### R1 — Skip-data byte count must be 64-bit
 
@@ -1047,7 +1018,7 @@ expose the skip-data operation so the Main Image Processor can call it directly
 at any point during a download, not only at block boundaries driven by the
 session layer itself.
 
-### 15.2 Platform Layer Requirements
+### 14.2 Platform Layer Requirements
 
 #### R3 — Sub Image Processor interface: three operations
 
@@ -1057,9 +1028,9 @@ The Sub Image Processor interface must expose three operations:
    before any bytes are delivered. Must return in milliseconds.
 2. **Initialisation** (`Init`) — called once with the full `SubImageHeader`
    immediately before the first write, and only when the readiness query
-   returned `kReady`. The sub-processor must store at minimum the binary's
-   byte length from the header so it can self-track progress and detect the
-   last chunk.
+   returned `kReady`. The sub-processor must store the binary's byte length
+   to self-track progress and detect the last chunk, and must store the
+   `sha256` field to verify integrity when the last chunk is received.
 3. **Write** (`Write`) — called per chunk with raw binary bytes. The
    Dispatcher guarantees exactly `length` bytes total across all calls, in
    order, with no headers or framing.
@@ -1097,7 +1068,7 @@ implement exponential backoff, enforce a max-retry limit, or raise an alert for
 persistent failures. The calling convention and scheduling mechanism are left to
 the platform.
 
-### 15.3 Compatibility Notes
+### 14.3 Compatibility Notes
 
 #### N1 — Single-image processor storage erasure
 
@@ -1115,7 +1086,7 @@ reach a sub-processor. Sub-processors must not be written to re-parse it.
 
 ---
 
-### 15.4 Pros and Cons of the SkipData Approach
+### 14.4 Pros and Cons of the SkipData Approach
 
 #### Pros
 
@@ -1125,7 +1096,7 @@ reach a sub-processor. Sub-processors must not be written to re-parse it.
 | P2  | **Spec-compliant.** `BlockQueryWithSkip` (0x15) is a standard BDX message. Any compliant Provider handles it.                                                     |
 | P3  | **RAM stays constant.** All sub-processors share one block buffer. Registered sub-processors are just pointers in a map; no extra RAM per component.              |
 | P4  | **Independent retry semantics.** If `IsReadyForOTA()` returns `kNotReady` today, the next OTA cycle offers another attempt with no persistent state to manage.    |
-| P5  | **Minimal session layer changes.** Only two requirements on the OTA session layer: skip-data must be invokable by the Main Image Processor, and its byte count must be 64-bit (§15.1). |
+| P5  | **Minimal session layer changes.** Only two requirements on the OTA session layer: skip-data must be invokable by the Main Image Processor, and its byte count must be 64-bit (§14.1). |
 | P6  | **Backward compatible.** Default `IsReadyForOTA()` returns `kReady`, so existing single-image processors are unaffected.                                          |
 
 #### Cons

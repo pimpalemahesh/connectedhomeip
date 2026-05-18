@@ -22,7 +22,7 @@ component firmwares into one `.ota` file with a structured header. The host
 device downloads the bundle once, routes each component's bytes to the right
 handler, and skips components that are not ready or do not need updating — all
 without any changes to the OTA Requestor, Provider protocol, or BDX layer
-beyond two small fixes documented in §14.
+beyond two small fixes documented in §9.
 
 ---
 
@@ -231,7 +231,7 @@ Three methods form the contract:
     its running byte total reaches `entry.length` (set by `Init()`).
 
 `OTAReadiness` is a three-value enum — not a boolean — because the
-confirmation policy (§11.1) requires distinguishing "already up to date" from
+confirmation policy (§12.1) requires distinguishing "already up to date" from
 "unavailable":
 
 | Value | Dispatcher action | Counts as verified? |
@@ -283,7 +283,7 @@ defines the interface; applications provide the implementations.
 triggers the Dispatcher to begin header accumulation. Once the full header
 section is parsed the Dispatcher switches to routing mode. It records the
 `OTAReadiness` result for each entry and uses it in `ConfirmCurrentImage()`
-(§5.5, §11.1).
+(§5.5, §12.1).
 
 **Dispatcher** — for each entry: looks up the sub-processor by `imageId`, calls
 `IsReadyForOTA()`. If `kReady`, calls `Init(entry)` then feeds chunks via
@@ -303,24 +303,7 @@ may have at most one registered processor; duplicate registration is an error.
 
 ## 5. End-to-End Flow
 
-### 5.1 Build / packaging
-
-1. CI builds each binary independently (primary firmware, co-processor firmware,
-   any other components).
-2. The multi-image payload tool reads the manifest (§3.5), computes SHA-256 per
-   binary, calculates offsets, serialises the `MultiImageHeader` +
-   `SubImageHeader[]`, and concatenates all binaries into a raw payload file.
-   `chip-ota-image-tool` then wraps that payload with the outer Matter OTA
-   header. Output: a single `.ota` bundle.
-3. The `.ota` bundle is uploaded to the OTA Provider (test or production).
-
-The Matter `softwareVersion` in the outer header reflects "the bundle as a
-whole" and is bumped whenever any binary inside changes. Per-binary `version`
-fields inside the `SubImageHeader` entries are informational and for sanity
-checks only; the OTA Requestor's update decision uses only the outer
-`softwareVersion`.
-
-### 5.2 Provider → device transfer
+### 5.1 Provider → device transfer
 
 1. Provider announces availability; Requestor on device QueryImage's, discovers
    a higher version, and starts BDX.
@@ -329,7 +312,7 @@ checks only; the OTA Requestor's update decision uses only the outer
    perspective — the multi-image logic is entirely inside the Main Image
    Processor.
 
-### 5.3 Per-block dispatch
+### 5.2 Per-block dispatch
 
 Processing has two phases gated by whether the full header section has been
 accumulated.
@@ -464,7 +447,7 @@ ProcessPayload(block) → error:
 - `Init(entry)` is called before the first `Write()` so the sub-processor has
   `entry.length` and `entry.sha256` upfront.
 
-### 5.4 Finalize → Apply → Reboot
+### 5.3 Finalize → Apply → Reboot
 
 After BDX delivers all bytes, the OTA Requestor calls `Finalize()` then
 `Apply()` on the Main Image Processor:
@@ -490,7 +473,7 @@ implementation (e.g., on the last chunk) or in a separate application-level hook
 invoked after `Apply()`. The framework does not define a commit lifecycle on the
 sub-processor interface.
 
-### 5.5 Boot validation and `softwareVersion` confirmation
+### 5.4 Boot validation and `softwareVersion` confirmation
 
 1. On the next boot the platform starts the newly committed firmware. If the
    firmware fails to start (crash loop, hard fault before confirming), the
@@ -521,13 +504,7 @@ ensures the next OTA cycle (for `softwareVersion + 1` or any future bundle)
 starts with a clean slate and does not inherit stale `kAlreadyUpToDate` entries
 from the previous cycle.
 
-> **Why this matters:** see §11.1. Confirming `softwareVersion` before all
-> components are verified permanently closes the OTA window for any skipped
-> components. The Provider will not offer the bundle again. The active retry
-> mechanism (§5.7) ensures the device does not have to wait for the next
-> periodic query timer after a rollback.
-
-### 5.6 Processor Readiness and `SkipData`
+### 5.5 Processor Readiness and `SkipData`
 
 Before feeding bytes to a sub-processor, the Dispatcher calls `IsReadyForOTA()`
 on it. If it returns `kNotReady` or `kAlreadyUpToDate` (or no processor is
@@ -535,8 +512,6 @@ registered for that image ID), the Dispatcher calls `SkipData(entry.length)` to
 tell the Provider to advance its cursor past that entire binary. Those bytes are
 never delivered to the device. The Dispatcher then moves on to the next
 `SubImageHeader` entry.
-
-#### Critical semantics
 
 **Skipped means permanently skipped for this OTA cycle.** The Provider will not
 re-send those bytes. A component whose processor returns `kNotReady` is not
@@ -555,24 +530,22 @@ done before the OTA session begins.
 **Mixed-version state after a `kNotReady` skip.** If one binary is updated and
 another is skipped with `kNotReady`, the device ends the OTA cycle with
 mismatched versions across its components. The application is responsible for
-detecting and handling this (§7.4, §9.6). Do not skip a component unless the
+detecting and handling this (§7.4, §10.6). Do not skip a component unless the
 device can tolerate running the old version of that component alongside new
 versions of the others.
-
-#### `SkipData()` — session layer requirements
 
 The skip-data operation must be invokable by the Main Image Processor at any
 point during a download. The BDX spec defines the skip byte count as a 64-bit
 field; the session layer must honour that width to avoid overflow for large
-images. See §14.1 for the full requirements.
+images. See §9.1 for the full requirements.
 
-### 5.7 Retry policy for incomplete cycles
+### 5.6 Retry policy for incomplete cycles
 
 When a download session finishes with one or more `kNotReady` entries, the
 affected nodes were not updated this cycle. Without intervention the device will
 next attempt an update only when the periodic `QueryImage` timer fires — which
 can be many minutes away. If `softwareVersion` is confirmed prematurely it may
-never fire at all (see §11.1).
+never fire at all (see §12.1).
 
 To recover faster, the Main Image Processor can actively re-trigger `QueryImage`
 after a platform-chosen delay, without waiting for the periodic timer. The retry
@@ -660,7 +633,7 @@ All Dispatcher logic and sub-processor `IsReadyForOTA()` / `Write()` calls
 execute on the **Matter thread**. Sub-processor implementations therefore do not
 need their own synchronization for this path. They must not perform long
 blocking operations on the Matter thread — any slow I/O (bus writes, DMA waits)
-should be dispatched to a worker task. See §9.3.
+should be dispatched to a worker task. See §10.3.
 
 ---
 
@@ -702,7 +675,7 @@ order. See §3.5.
 | Mid-download (network, power)                                  | Old firmware in active slot; new data partially written        | Next OTA cycle overwrites cleanly from byte 0.                                              |
 | `Finalize()` returns error                                     | Old firmware; sub-processor writes may be partially done       | `Abort()` is called on the Main Image Processor; application cleans up sub-processor state. |
 | `Apply()` fails                                                | Old firmware on primary; sub-processor writes may be partially done | Component rollback is the application's responsibility (out of scope for this framework). Next OTA cycle re-flashes as needed. |
-| `Apply()` fails; sub-processor write was irreversible (e.g. co-processor already flashed over bus) | Old primary firmware; external component already on new firmware | Split-version state. Boot-time consistency check (§9.6) detects mismatch and re-triggers update or marks device unhealthy. |
+| `Apply()` fails; sub-processor write was irreversible (e.g. co-processor already flashed over bus) | Old primary firmware; external component already on new firmware | Split-version state. Boot-time consistency check (§10.6) detects mismatch and re-triggers update or marks device unhealthy. |
 | Power loss after `Apply()` commits, before reboot              | New firmware will be booted next                               | Normal supported state — bootloader sees the committed slot.                                |
 | New firmware crashes on first boot                             | Old firmware                                                   | Platform rollback restores previous slot before `ConfirmCurrentImage()` is called.          |
 | New firmware boots but `ConfirmCurrentImage()` is never called | Old firmware on next reboot                                    | Platform rolls back. Application must confirm.                                              |
@@ -716,7 +689,7 @@ framework provides **best-effort atomicity**:
 -   Within the primary firmware slot: real atomicity at the platform commit
     step.
 -   Across primary + external components: depends on application ordering logic
-    and boot-time reconciliation (see §9.6).
+    and boot-time reconciliation (see §10.6).
 
 ---
 
@@ -756,7 +729,7 @@ For a multi-component product, the application provides:
 
 1. **One Sub Image Processor implementation per additional binary.** Implements
    `IsReadyForOTA()` and the write method for that binary's destination
-   (partition, bus, NVS, etc.). See §9.
+   (partition, bus, NVS, etc.). See §10.
 2. **Registration** — registers each sub-processor under its chosen image ID
    before the OTA session begins.
 3. **Packaging integration** — CI calls the packaging tool with a manifest that
@@ -764,7 +737,7 @@ For a multi-component product, the application provides:
 4. **A boot-time consistency check** for any external component (co-processor,
    peripheral). On boot, query the component's installed version and re-trigger
    update if it does not match the expected version for the running firmware.
-   See §9.6.
+   See §10.6.
 5. **A versioning policy** — define when the outer `softwareVersion` is bumped
    (recommended: bump on any component change).
 
@@ -777,310 +750,14 @@ For a multi-component product, the application provides:
 
 ---
 
-## 9. Adding a Sub Image Processor
-
-This section describes the steps for adding support for an additional binary
-(e.g. a co-processor, a peripheral, a secondary partition) to the multi-image
-OTA flow.
-
-### 9.1 Pick an image ID
-
-Pick **any `uint8_t` value in the range 128–255** for a manufacturer-defined
-binary. There is no list to add to and no central authority.
-
-Document the chosen value in the product's release notes — it is a stable ABI
-contract between the device firmware and the packaging tool. Do not reuse a
-value across unrelated binaries in the same product, and do not repurpose a
-value across firmware releases.
-
-### 9.2 Implement the Sub Image Processor interface
-
-The Sub Image Processor interface has three methods:
-
-**`IsReadyForOTA(uint32_t targetVersion)` → `OTAReadiness`** — called once
-before bytes start. The Dispatcher passes `entry.version` from the
-`SubImageHeader` as `targetVersion`. The sub-processor reads its currently
-installed version, compares it against `targetVersion`, and returns one of:
-
-| Node state | Return value | Effect |
-|---|---|---|
-| Component reachable, installed version ≠ `targetVersion` | `kReady` | Dispatcher calls `Init()` then `Write()`. |
-| Component installed version == `targetVersion` | `kAlreadyUpToDate` | Dispatcher skips. Counts as verified at confirmation — no update needed. |
-| Component busy (initializing, running a critical task) | `kNotReady` | Dispatcher skips. Blocks `softwareVersion` confirmation this cycle. |
-| Component unreachable or not responding | `kNotReady` | Dispatcher skips. Blocks confirmation. Application should log. |
-| Component in error state requiring manual recovery | `kNotReady` | Dispatcher skips. Blocks confirmation. Update would be unsafe. |
-
-Rules:
-- Must return in **milliseconds**. No blocking I/O. Any slow initialization
-  (bus negotiation, boot-mode handshake) must happen before the OTA session
-  begins.
-- The return value is permanent for this OTA cycle. There is no retry within
-  the session.
-- The sub-processor must log the specific reason so that skips are observable
-  and diagnosable.
-- Default returns `kReady`. Override whenever readiness depends on runtime state.
-
-**`Init(const SubImageHeader & entry)`** — called once immediately before the
-first `Write()`, only when `IsReadyForOTA()` returned `kReady`. The sub-processor
-must store at minimum `entry.length` to self-track progress. It should also
-record `entry.version` for cross-verification and store `entry.sha256` to verify
-integrity on the last chunk.
-
-**Write method** — called per chunk. The Dispatcher guarantees:
-- Chunks arrive sequentially from byte 0 of the binary's data.
-- Exactly `entry.length` bytes are delivered in total across all calls.
-- Chunks contain raw binary bytes only — no headers or framing.
-
-The sub-processor detects its last chunk by comparing its running byte total
-against `entry.length` (set in `Init()`). SHA-256 verification, commit, and
-bus-transfer completion must happen on the last chunk. What the application does
-with the bytes is entirely its own responsibility.
-
-### 9.3 Non-blocking writes
-
-The Dispatcher and Matter thread cannot stall waiting for slow bus
-acknowledgments. If the write operation (UART, SPI, I²C, etc.) takes more than a
-few milliseconds per chunk:
-
-1. Copy the chunk to a local buffer or DMA descriptor.
-2. Return from the write method immediately.
-3. Schedule the actual bus transfer to a worker task.
-4. When the transfer completes, signal the Main Image Processor to resume
-   fetching the next block from BDX.
-
-This pattern applies to any slow transport and keeps the Matter thread
-responsive.
-
-### 9.4 Register the processor
-
-Register the sub-processor instance with the Dispatcher before the OTA session
-starts, associating it with the chosen image ID. Registration is typically done
-at application initialization.
-
-Registration only builds the `imageId → sub-processor` map. It does **not**
-determine processing order. Processing order is determined entirely by the order
-of `SubImageHeader[]` entries in the OTA file, which is set at packaging time
-(§9.5). A processor registered first can have an image ID that appears last in
-the file.
-
-Each image ID may have at most one registered processor. Registering a duplicate
-image ID is an error.
-
-### 9.5 Wire up packaging
-
-Add the binary and its image ID to the product's release manifest and ensure the
-CI build passes both to the packaging tool. The order of entries in the manifest
-determines the order of binaries in the OTA file, which determines the delivery
-order. Place binaries in the order that matches your application's write
-dependencies.
-
-### 9.6 Boot-time consistency check
-
-For any binary that targets an external component (co-processor, peripheral),
-implement a boot-time check before the application initializes Matter:
-
-1. Query the component's currently installed version.
-2. Compare it against the version expected by the running firmware.
-3. If they do not match, either re-trigger the update from a known-good source
-   (e.g., a blob bundled in the primary firmware) or mark the device as
-   unhealthy and withhold Matter advertising until the inconsistency is
-   resolved.
-
-This is the recovery path for the case where the primary firmware was committed
-but the external component's bytes were skipped or its write failed silently.
-
----
-
-## 10. Build Configuration
-
-### 10.1 Build flag
-
-Multi-image OTA is disabled by default. A single build flag enables the entire
-subsystem:
-
-```
-chip_enable_multi_ota_requestor = true
-```
-
-When disabled, the build uses the standard single-image processor. The two paths
-are mutually exclusive — at most one OTA image processor implementation can be
-linked.
-
-### 10.2 Platform requirements
-
-The target platform must have:
-
--   At least one alternate firmware slot so the new firmware can be written
-    without overwriting the currently running image.
--   Boot validation support: the ability to mark a new firmware as confirmed
-    after a successful first boot, and to roll back to the previous firmware if
-    confirmation does not arrive.
-
-Specific platform configuration (partition tables, bootloader flags, etc.) is
-documented alongside the platform integration code.
-
----
-
-## 11. Versioning Strategy
-
-There are three distinct version numbers. Don't conflate them:
-
-| Number                              | Where it lives                                | Who reads it                                   | Semantics                                                                                                         |
-| ----------------------------------- | --------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Matter `softwareVersion`            | Outer OTA header & `BasicInformation` cluster | OTA Requestor / Provider                       | "Is there a newer bundle?" — represents the state where every component in the bundle is at its expected version. |
-| Per-binary `SubImageHeader.version` | `SubImageHeader` entries                      | Sub-processors, boot-time check                | Expected installed version of each individual component for this bundle.                                          |
-| Component-reported version          | Read from the component at runtime            | Boot-time consistency check, `IsReadyForOTA()` | Ground truth of what is actually installed on that component right now.                                           |
-
-### 11.1 `softwareVersion` confirmation policy
-
-This is the most critical rule in the multi-image versioning strategy.
-
-**The `softwareVersion` must not be confirmed until every component described in
-the bundle is verified to be at its expected version.**
-
-The `softwareVersion` is not just a "host firmware version" — it represents the
-state of the entire bundle. Confirming it signals to the OTA Requestor and
-Provider that the device is fully at this version. Once confirmed, the Requestor
-will not initiate another download cycle for the same version.
-
-**Consequence of premature confirmation:** If the host firmware is updated and
-`softwareVersion` is confirmed, but one or more connected nodes were skipped,
-those nodes are permanently stuck on their old firmware with no mechanism to
-receive the missed update through the normal OTA path. The Provider sees the
-device at the latest version and will not offer the bundle again.
-
-**The correct policy:**
-
-At `ConfirmCurrentImage()` time, before marking the new `softwareVersion` as
-confirmed, the application must verify that every registered sub-processor's
-component is at its expected version (`SubImageHeader.version` for its image
-ID). Only if all components match should confirmation proceed.
-
-| Component verification result                                      | Action                                                                                                                                                                                       |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| All components at expected version                                 | Confirm `softwareVersion`. **Erase NVS readiness map and `attemptCount`.** OTA cycle is complete.                                                                                            |
-| One or more components not at expected version                     | Do **not** confirm. Invoke the retry hook (§5.7). Platform rollback restores the previous primary firmware. Device reverts to old `softwareVersion`. Retry re-opens the OTA window.          |
-| Component was skipped because it was already at the target version | Counts as verified — no update was needed.                                                                                                                                                   |
-
-**Implication for `IsReadyForOTA()`:** A sub-processor returning `kNotReady`
-means that component will not be updated this cycle and **blocks**
-`softwareVersion` confirmation. A sub-processor returning `kAlreadyUpToDate`
-means the component is already at the target version — it is skipped but counts
-as verified, so confirmation can proceed. The `OTAReadiness` enum encodes this
-distinction directly; the confirmation logic needs no additional state
-inspection. See §9.2.
-
-**Recovering without waiting for the periodic timer:** When confirmation is
-withheld, the Main Image Processor invokes `OnPendingNodeUpdates` (§5.7) before
-the rollback reboot. The platform implementation can schedule a re-trigger so
-the device re-queries the Provider as soon as it comes back up on the old
-firmware, without waiting for the next periodic `QueryImage` timeout.
-
-### 11.2 Recommended discipline
-
--   The outer `softwareVersion` strictly increases on every release and is
-    bumped whenever any component in the bundle changes.
--   The per-component `SubImageHeader.version` is the authoritative expected
-    version for that component in this bundle. Use it as the target in the
-    boot-time verification check.
--   The component-reported runtime version is the ground truth. The boot-time
-    check compares runtime versions against the expected table for the running
-    bundle, not against the previous bundle.
--   Never release a bundle where any component's `SubImageHeader.version` is
-    lower than what is already deployed — this would cause sub-processors
-    reporting "already at target version" to incorrectly pass verification
-    against a downgraded expectation.
-
----
-
-## 12. Testing
-
-### 12.1 Unit tests
-
-Feed synthesized byte streams into the Dispatcher and verify routing behaviour
-using stub sub-processors. Tests should cover:
-
--   `MultiImageHeader` parsing: valid magic/version, invalid magic rejected,
-    `numImages` = 0 handled gracefully.
--   Boundary cases: block ends exactly at a binary boundary.
--   Block split across two binaries: last bytes of binary A and first bytes of
-    binary B arrive in the same block.
--   `IsReadyForOTA()` returning `kNotReady`: verify `SkipData()` is called with
-    `entry.length`, `Init()` and `Write()` are never called, and the entry is
-    recorded as `kNotReady` in the readiness map.
--   `IsReadyForOTA()` returning `kAlreadyUpToDate`: verify `SkipData()` is
-    called with `entry.length`, `Init()` and `Write()` are never called, and the
-    entry is recorded as `kAlreadyUpToDate` (counts as verified).
--   No registered processor for an image ID: same skip behaviour as `kNotReady`.
--   `Init()` receives the correct `SubImageHeader` fields before the first
-    `Write()` call.
--   SHA-256 digest mismatch on the last chunk: verify the sub-processor rejects
-    the update and `Finalize()` returns an error.
--   `Apply()` failure: verify the device does not reboot and stays on the old
-    firmware.
-
-**Confirmation policy tests** — these are the most critical class:
-
--   All sub-processors return `kReady` and all writes succeed →
-    `ConfirmCurrentImage()` succeeds and `softwareVersion` is confirmed.
--   All sub-processors return `kAlreadyUpToDate` →
-    `ConfirmCurrentImage()` succeeds (every entry counts as verified).
--   One sub-processor returns `kNotReady`, all others `kReady` →
-    `ConfirmCurrentImage()` returns error; platform rollback is triggered;
-    `softwareVersion` is **not** confirmed.
--   Mix of `kReady` + `kAlreadyUpToDate` with no `kNotReady` →
-    `ConfirmCurrentImage()` succeeds.
--   `kNotReady` entry recorded during download; on the next boot the same entry
-    is now resolvable → verify confirmation re-evaluates the saved readiness map
-    (persisted across reboot) and succeeds only when all entries are verified.
-
-**Retry policy tests:**
-
--   Download ends with one `kNotReady` entry → verify `OnPendingNodeUpdates()`
-    is called with that image ID in `pendingImageIds` and `attemptCount = 1`.
--   `OnPendingNodeUpdates` schedules a re-trigger; verify the re-trigger fires
-    after the configured delay and a new BDX session begins.
--   `attemptCount` increments correctly across rollback reboots; verify NVS
-    persistence by simulating power-cycle between attempts.
--   Platform sets `kMaxRetries = 3`; verify `OnPendingNodeUpdates()` stops
-    scheduling retries after the third call and raises an alert instead.
--   `kAlreadyUpToDate` entry is **not** included in `pendingImageIds`; verify
-    it does not trigger a retry.
-
-### 12.2 Integration tests
-
-A hardware- or emulator-based test that:
-
-1. Builds a primary firmware image and a stub secondary image.
-2. Packages them into a two-component `.ota` bundle.
-3. Serves the bundle via a Matter OTA Provider.
-4. Runs the device under test, confirms it downloads, applies, reboots, confirms
-   the new firmware, and reports the updated version.
-
-### 12.3 Failure injection
-
-Inject failures at: mid-write (return error from the write method),
-`Finalize()`, `Apply()`. For each case, verify the device remains on the
-previously running firmware after the failure.
-
----
-
-## 13. Open Questions / Future Work
-
-1. **Resume on disconnect.** BDX retries restart from byte 0; there is no
-   per-binary progress checkpoint. If the device reboots mid-download it
-   re-downloads from the beginning. Acceptable for most products.
-
----
-
-## 14. Implementation Requirements
+## 9. Implementation Requirements
 
 This section describes the requirements that an OTA session layer and platform
 layer must satisfy to implement the design described in this document. No
 specific programming language, API, or SDK is mandated — platforms choose their
 own implementation style.
 
-### 14.1 OTA Session Layer Requirements
+### 9.1 OTA Session Layer Requirements
 
 #### R1 — Skip-data byte count must be 64-bit
 
@@ -1098,7 +775,7 @@ expose the skip-data operation so the Main Image Processor can call it directly
 at any point during a download, not only at block boundaries driven by the
 session layer itself.
 
-### 14.2 Platform Layer Requirements
+### 9.2 Platform Layer Requirements
 
 #### R3 — Sub Image Processor interface: three operations
 
@@ -1152,7 +829,7 @@ implement exponential backoff, enforce a max-retry limit, or raise an alert for
 persistent failures. The calling convention and scheduling mechanism are left to
 the platform.
 
-### 14.3 Compatibility Notes
+### 9.3 Compatibility Notes
 
 #### N1 — Single-image processor storage erasure
 
@@ -1170,7 +847,258 @@ reach a sub-processor. Sub-processors must not be written to re-parse it.
 
 ---
 
-### 14.4 Pros and Cons of the SkipData Approach
+## 10. Adding a Sub Image Processor
+
+This section describes the steps for adding support for an additional binary
+(e.g. a co-processor, a peripheral, a secondary partition) to the multi-image
+OTA flow.
+
+### 10.1 Pick an image ID
+
+Pick **any `uint8_t` value in the range 128–255** for a manufacturer-defined
+binary. There is no list to add to and no central authority.
+
+Document the chosen value in the product's release notes — it is a stable ABI
+contract between the device firmware and the packaging tool. Do not reuse a
+value across unrelated binaries in the same product, and do not repurpose a
+value across firmware releases.
+
+### 10.2 Implement the Sub Image Processor interface
+
+The Sub Image Processor interface has three methods:
+
+**`IsReadyForOTA(uint32_t targetVersion)` → `OTAReadiness`** — called once
+before bytes start. The Dispatcher passes `entry.version` from the
+`SubImageHeader` as `targetVersion`. The sub-processor reads its currently
+installed version, compares it against `targetVersion`, and returns one of:
+
+| Node state | Return value | Effect |
+|---|---|---|
+| Component reachable, installed version ≠ `targetVersion` | `kReady` | Dispatcher calls `Init()` then `Write()`. |
+| Component installed version == `targetVersion` | `kAlreadyUpToDate` | Dispatcher skips. Counts as verified at confirmation — no update needed. |
+| Component busy (initializing, running a critical task) | `kNotReady` | Dispatcher skips. Blocks `softwareVersion` confirmation this cycle. |
+| Component unreachable or not responding | `kNotReady` | Dispatcher skips. Blocks confirmation. Application should log. |
+| Component in error state requiring manual recovery | `kNotReady` | Dispatcher skips. Blocks confirmation. Update would be unsafe. |
+
+Rules:
+- Must return in **milliseconds**. No blocking I/O. Any slow initialization
+  (bus negotiation, boot-mode handshake) must happen before the OTA session
+  begins.
+- The return value is permanent for this OTA cycle. There is no retry within
+  the session.
+- The sub-processor must log the specific reason so that skips are observable
+  and diagnosable.
+- Default returns `kReady`. Override whenever readiness depends on runtime state.
+
+**`Init(const SubImageHeader & entry)`** — called once immediately before the
+first `Write()`, only when `IsReadyForOTA()` returned `kReady`. The sub-processor
+must store at minimum `entry.length` to self-track progress. It should also
+record `entry.version` for cross-verification and store `entry.sha256` to verify
+integrity on the last chunk.
+
+**Write method** — called per chunk. The Dispatcher guarantees:
+- Chunks arrive sequentially from byte 0 of the binary's data.
+- Exactly `entry.length` bytes are delivered in total across all calls.
+- Chunks contain raw binary bytes only — no headers or framing.
+
+The sub-processor detects its last chunk by comparing its running byte total
+against `entry.length` (set in `Init()`). SHA-256 verification, commit, and
+bus-transfer completion must happen on the last chunk. What the application does
+with the bytes is entirely its own responsibility.
+
+### 10.3 Non-blocking writes
+
+The Dispatcher and Matter thread cannot stall waiting for slow bus
+acknowledgments. If the write operation (UART, SPI, I²C, etc.) takes more than a
+few milliseconds per chunk:
+
+1. Copy the chunk to a local buffer or DMA descriptor.
+2. Return from the write method immediately.
+3. Schedule the actual bus transfer to a worker task.
+4. When the transfer completes, signal the Main Image Processor to resume
+   fetching the next block from BDX.
+
+This pattern applies to any slow transport and keeps the Matter thread
+responsive.
+
+### 10.4 Register the processor
+
+Register the sub-processor instance with the Dispatcher before the OTA session
+starts, associating it with the chosen image ID. Registration is typically done
+at application initialization.
+
+Registration only builds the `imageId → sub-processor` map. It does **not**
+determine processing order. Processing order is determined entirely by the order
+of `SubImageHeader[]` entries in the OTA file, which is set at packaging time
+(§10.5). A processor registered first can have an image ID that appears last in
+the file.
+
+Each image ID may have at most one registered processor. Registering a duplicate
+image ID is an error.
+
+### 10.5 Wire up packaging
+
+Add the binary and its image ID to the product's release manifest and ensure the
+CI build passes both to the packaging tool. The order of entries in the manifest
+determines the order of binaries in the OTA file, which determines the delivery
+order. Place binaries in the order that matches your application's write
+dependencies.
+
+### 10.6 Boot-time consistency check
+
+For any binary that targets an external component (co-processor, peripheral),
+implement a boot-time check before the application initializes Matter:
+
+1. Query the component's currently installed version.
+2. Compare it against the version expected by the running firmware.
+3. If they do not match, either re-trigger the update from a known-good source
+   (e.g., a blob bundled in the primary firmware) or mark the device as
+   unhealthy and withhold Matter advertising until the inconsistency is
+   resolved.
+
+This is the recovery path for the case where the primary firmware was committed
+but the external component's bytes were skipped or its write failed silently.
+
+---
+
+## 11. Build Configuration
+
+### 11.1 Build flag
+
+Multi-image OTA is disabled by default. A single build flag enables the entire
+subsystem:
+
+```
+chip_enable_multi_ota_requestor = true
+```
+
+When disabled, the build uses the standard single-image processor. The two paths
+are mutually exclusive — at most one OTA image processor implementation can be
+linked.
+
+### 11.2 Platform requirements
+
+The target platform must have:
+
+-   At least one alternate firmware slot so the new firmware can be written
+    without overwriting the currently running image.
+-   Boot validation support: the ability to mark a new firmware as confirmed
+    after a successful first boot, and to roll back to the previous firmware if
+    confirmation does not arrive.
+
+Specific platform configuration (partition tables, bootloader flags, etc.) is
+documented alongside the platform integration code.
+
+---
+
+## 12. Versioning
+
+Three distinct version numbers exist in this system:
+
+| Number                              | Where it lives                                | Who reads it                                   | Semantics                                                                                                         |
+| ----------------------------------- | --------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Matter `softwareVersion`            | Outer OTA header & `BasicInformation` cluster | OTA Requestor / Provider                       | "Is there a newer bundle?" — represents the state where every component in the bundle is at its expected version. |
+| Per-binary `SubImageHeader.version` | `SubImageHeader` entries                      | Sub-processors, boot-time check                | Expected installed version of each individual component for this bundle.                                          |
+| Component-reported version          | Read from the component at runtime            | Boot-time consistency check, `IsReadyForOTA()` | Ground truth of what is actually installed on that component right now.                                           |
+
+### 12.1 Discipline
+
+-   The outer `softwareVersion` strictly increases on every release and is
+    bumped whenever any component in the bundle changes.
+-   The per-component `SubImageHeader.version` is the authoritative expected
+    version for that component in this bundle. Use it as the target in the
+    boot-time verification check.
+-   The component-reported runtime version is the ground truth. The boot-time
+    check compares runtime versions against the expected table for the running
+    bundle, not against the previous bundle.
+-   Never release a bundle where any component's `SubImageHeader.version` is
+    lower than what is already deployed — this would cause sub-processors
+    reporting "already at target version" to incorrectly pass verification
+    against a downgraded expectation.
+
+---
+
+## 13. Testing
+
+### 13.1 Unit tests
+
+Feed synthesized byte streams into the Dispatcher and verify routing behaviour
+using stub sub-processors. Tests should cover:
+
+-   `MultiImageHeader` parsing: valid magic/version, invalid magic rejected,
+    `numImages` = 0 handled gracefully.
+-   Boundary cases: block ends exactly at a binary boundary.
+-   Block split across two binaries: last bytes of binary A and first bytes of
+    binary B arrive in the same block.
+-   `IsReadyForOTA()` returning `kNotReady`: verify `SkipData()` is called with
+    `entry.length`, `Init()` and `Write()` are never called, and the entry is
+    recorded as `kNotReady` in the readiness map.
+-   `IsReadyForOTA()` returning `kAlreadyUpToDate`: verify `SkipData()` is
+    called with `entry.length`, `Init()` and `Write()` are never called, and the
+    entry is recorded as `kAlreadyUpToDate` (counts as verified).
+-   No registered processor for an image ID: same skip behaviour as `kNotReady`.
+-   `Init()` receives the correct `SubImageHeader` fields before the first
+    `Write()` call.
+-   SHA-256 digest mismatch on the last chunk: verify the sub-processor rejects
+    the update and `Finalize()` returns an error.
+-   `Apply()` failure: verify the device does not reboot and stays on the old
+    firmware.
+
+**Confirmation policy tests** — these are the most critical class:
+
+-   All sub-processors return `kReady` and all writes succeed →
+    `ConfirmCurrentImage()` succeeds and `softwareVersion` is confirmed.
+-   All sub-processors return `kAlreadyUpToDate` →
+    `ConfirmCurrentImage()` succeeds (every entry counts as verified).
+-   One sub-processor returns `kNotReady`, all others `kReady` →
+    `ConfirmCurrentImage()` returns error; platform rollback is triggered;
+    `softwareVersion` is **not** confirmed.
+-   Mix of `kReady` + `kAlreadyUpToDate` with no `kNotReady` →
+    `ConfirmCurrentImage()` succeeds.
+-   `kNotReady` entry recorded during download; on the next boot the same entry
+    is now resolvable → verify confirmation re-evaluates the saved readiness map
+    (persisted across reboot) and succeeds only when all entries are verified.
+
+**Retry policy tests:**
+
+-   Download ends with one `kNotReady` entry → verify `OnPendingNodeUpdates()`
+    is called with that image ID in `pendingImageIds` and `attemptCount = 1`.
+-   `OnPendingNodeUpdates` schedules a re-trigger; verify the re-trigger fires
+    after the configured delay and a new BDX session begins.
+-   `attemptCount` increments correctly across rollback reboots; verify NVS
+    persistence by simulating power-cycle between attempts.
+-   Platform sets `kMaxRetries = 3`; verify `OnPendingNodeUpdates()` stops
+    scheduling retries after the third call and raises an alert instead.
+-   `kAlreadyUpToDate` entry is **not** included in `pendingImageIds`; verify
+    it does not trigger a retry.
+
+### 13.2 Integration tests
+
+A hardware- or emulator-based test that:
+
+1. Builds a primary firmware image and a stub secondary image.
+2. Packages them into a two-component `.ota` bundle.
+3. Serves the bundle via a Matter OTA Provider.
+4. Runs the device under test, confirms it downloads, applies, reboots, confirms
+   the new firmware, and reports the updated version.
+
+### 13.3 Failure injection
+
+Inject failures at: mid-write (return error from the write method),
+`Finalize()`, `Apply()`. For each case, verify the device remains on the
+previously running firmware after the failure.
+
+---
+
+## 14. Open Questions / Future Work
+
+1. **Resume on disconnect.** BDX retries restart from byte 0; there is no
+   per-binary progress checkpoint. If the device reboots mid-download it
+   re-downloads from the beginning. Acceptable for most products.
+
+---
+
+## Appendix A. Design Rationale — SkipData Approach
 
 #### Pros
 
@@ -1180,7 +1108,7 @@ reach a sub-processor. Sub-processors must not be written to re-parse it.
 | P2  | **Spec-compliant.** `BlockQueryWithSkip` (0x15) is a standard BDX message. Any compliant Provider handles it.                                                     |
 | P3  | **RAM stays constant.** All sub-processors share one block buffer. Registered sub-processors are just pointers in a map; no extra RAM per component.              |
 | P4  | **Independent retry semantics.** If `IsReadyForOTA()` returns `kNotReady` today, the next OTA cycle offers another attempt with no persistent state to manage.    |
-| P5  | **Minimal session layer changes.** Only two requirements on the OTA session layer: skip-data must be invokable by the Main Image Processor, and its byte count must be 64-bit (§14.1). |
+| P5  | **Minimal session layer changes.** Only two requirements on the OTA session layer: skip-data must be invokable by the Main Image Processor, and its byte count must be 64-bit (§9.1). |
 | P6  | **Backward compatible.** Default `IsReadyForOTA()` returns `kReady`, so existing single-image processors are unaffected.                                          |
 
 #### Cons
@@ -1190,5 +1118,5 @@ reach a sub-processor. Sub-processors must not be written to re-parse it.
 | C1  | **Skip = no update this cycle.** `IsReadyForOTA()` is a yes/no decision before bytes start flowing. There is no "wait and retry." If a component needs 10 seconds to enter update mode it misses this OTA cycle. Pre-session synchronization is required. |
 | C2  | **Processing order locked to file layout.** Components are processed in the order they appear in the OTA file. The packaging tool must produce the file in the order that matches the application's write dependencies.                                   |
 | C3  | **No mid-session pause.** The Dispatcher cannot pause the BDX session and resume later. Provider idle timeout terminates the session if `BlockQuery` or `BlockQueryWithSkip` is not sent promptly.                                                        |
-| C4  | **Mixed-version state on skip.** A device where one component was skipped runs a new version of some components alongside old versions of others. The application must detect and handle this at boot time (see §9.6).                                    |
+| C4  | **Mixed-version state on skip.** A device where one component was skipped runs a new version of some components alongside old versions of others. The application must detect and handle this at boot time (see §10.6).                                    |
 | C5  | **Provider must support `BlockQueryWithSkip`.** Most compliant Matter OTA Providers handle it, but a minimal or non-compliant Provider may not. Verify Provider compliance before relying on skip.                                                        |

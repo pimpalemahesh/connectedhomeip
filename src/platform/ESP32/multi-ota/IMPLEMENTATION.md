@@ -34,17 +34,17 @@ struct __attribute__((packed)) MultiImageHeader
 };
 static_assert(sizeof(MultiImageHeader) == 8);
 
-// Fixed 60 bytes per component entry.
+// Fixed 48 bytes per component entry.
 struct __attribute__((packed)) SubImageHeader
 {
-    uint8_t  imageId;       // identifies which sub-processor handles this binary
-    uint32_t version;       // expected installed version of this binary
-    uint32_t offset;        // byte offset of binary data from payload start
-    uint32_t length;        // exact byte count of the binary
-    uint8_t  sha256[32];    // mandatory SHA-256 digest of [offset, offset+length)
-    uint8_t  reserved[15];  // must be zero; reserved for future extensions
+    uint8_t  imageId;      // identifies which sub-processor handles this binary
+    uint32_t version;      // expected installed version of this binary
+    uint32_t offset;       // byte offset of binary data from payload start
+    uint32_t length;       // exact byte count of the binary
+    uint8_t  sha256[32];   // mandatory SHA-256 digest of [offset, offset+length)
+    uint8_t  reserved[3];  // must be zero; reserved for future extensions
 };
-static_assert(sizeof(SubImageHeader) == 60);
+static_assert(sizeof(SubImageHeader) == 48);
 
 // Safe field read from a packed/potentially-unaligned pointer.
 // Always use this instead of direct field access on SubImageHeader*.
@@ -317,7 +317,8 @@ CHIP_ERROR MultiImageOTAProcessor::RoutePayload(ByteSpan & block)
             if (it != mProcessorMap.end())
                 proc = it->second;
 
-            OTAReadiness readiness = proc ? proc->IsReadyForOTA(entry.version) : OTAReadiness::kNotReady;
+            // No registered processor → assumed already up to date; does not block confirmation
+            OTAReadiness readiness = proc ? proc->IsReadyForOTA(entry.version) : OTAReadiness::kAlreadyUpToDate;
             mReadinessMap[entry.imageId] = readiness;
             SaveReadinessMapToNVS();
 
@@ -449,9 +450,9 @@ MULTI_IMAGE_HEADER_MAGIC = 0x4D494F54  # "MIOT"
 
 # Little-endian packed structs
 MULTI_HDR_FMT  = '<I B 3s'            # magic(4) + numImages(1) + reserved(3) = 8 B
-SUB_HDR_FMT    = '<B I I I 32s 15s'   # id(1)+ver(4)+off(4)+len(4)+sha256(32)+rsv(15) = 60 B
+SUB_HDR_FMT    = '<B I I I 32s 3s'    # id(1)+ver(4)+off(4)+len(4)+sha256(32)+rsv(3) = 48 B
 MULTI_HDR_SIZE = struct.calcsize(MULTI_HDR_FMT)   # 8
-SUB_HDR_SIZE   = struct.calcsize(SUB_HDR_FMT)     # 60
+SUB_HDR_SIZE   = struct.calcsize(SUB_HDR_FMT)     # 48
 
 
 def sha256_file(path: str) -> bytes:
@@ -475,7 +476,7 @@ def build_multi_image_header(images: list) -> bytes:
         blob += struct.pack(SUB_HDR_FMT,
                             img['id'], img['version'],
                             offset, length,
-                            digest, b'\x00' * 15)
+                            digest, b'\x00' * 3)
         offset += length
 
     return blob
@@ -544,14 +545,14 @@ if __name__ == '__main__':
 
 ### What it does
 
-| Step | Detail |
-|---|---|
-| Header blob | Built entirely in memory — 8 + N×60 bytes, tiny for any realistic N |
+| Step               | Detail                                                                           |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Header blob        | Built entirely in memory — 8 + N×48 bytes, tiny for any realistic N             |
 | Per-binary SHA-256 | Streamed from disk; stored in `SubImageHeader.sha256` for on-device verification |
-| Outer OTA digest | SHA-256 over (header_blob + all binaries) — computed in one pass |
-| Outer header | Built via imported `ota_image_tool` functions — no duplication of TLV logic |
-| Output | Single `.ota` = outer Matter header + header blob + binary files |
-| No temp files | Everything written directly to the output in one sequential pass |
+| Outer OTA digest   | SHA-256 over (header_blob + all binaries) — computed in one pass                |
+| Outer header       | Built via imported `ota_image_tool` functions — no duplication of TLV logic     |
+| Output             | Single `.ota` = outer Matter header + header blob + binary files                |
+| No temp files      | Everything written directly to the output in one sequential pass                 |
 
 ---
 

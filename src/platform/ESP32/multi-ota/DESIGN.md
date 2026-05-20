@@ -30,7 +30,7 @@ without any changes to the OTA Requestor, Provider protocol, or BDX layer.
 | **Bundle**              | A single `.ota` file containing the `MultiImageHeader`, one `SubImageHeader` per component, and all component binaries concatenated.                |
 | **Main Image Processor**| The OTA image processor implementation the Matter OTA Requestor calls. Owns the full download lifecycle and contains the Dispatcher.                |
 | **Dispatcher**          | The routing engine inside the Main Image Processor. Parses the bundle header, maintains the `imageId → sub-processor` map, and routes or skips each component's bytes. |
-| **Sub Image Processor** | An application-provided handler for one component. Implements `IsReadyForOTA(targetVersion)`, `Init()`, and `Write()`.                             |
+| **Sub Image Processor** | An application-provided handler for one component. Implements `Init(entry)`, `IsReadyForOTA()`, and `Write()`.                                     |
 | **Image ID**            | A 1-byte unsigned integer (0–255) that identifies which sub-processor handles a given component. Stable ABI between firmware and packaging tool.    |
 | **`SkipData(n)`**       | BDX `BlockQueryWithSkip` — tells the Provider to advance its cursor by `n` bytes without delivering them.                                          |
 | **Confirmation**        | The platform action that marks newly booted firmware as valid and cancels any pending rollback. Triggered by `ConfirmCurrentImage()`.               |
@@ -133,7 +133,7 @@ realistic multi-image bundle. The namespace is partitioned to avoid collisions:
 | `128 .. 255` | Manufacturer | **Manufacturer-defined.** Pick any value in this range; no central registry.                                                   |
 
 The specific well-known IDs within range `1–15` (e.g. which value means
-"application firmware", "bootloader", "partition table") are determined by the
+"application firmware", etc) are determined by the
 implementation and documented alongside the processor registration code. This
 spec does not assign them.
 
@@ -190,18 +190,22 @@ not-ready, `SkipData()` is also called but the entry blocks confirmation.
 **Sub Image Processor** — an interface the application registers per image ID.
 Three methods form the contract:
 
--   `IsReadyForOTA(targetVersion)` → `OTAReadiness` — called once before bytes
-    start, with `SubImageHeader.version` as `targetVersion`. The sub-processor
-    compares `targetVersion` against its installed version and returns one of
-    three values: `kReady` (proceed), `kAlreadyUpToDate` (already at
-    `targetVersion`, skip but counts as verified), `kNotReady` (skip, blocks
+-   `Init(entry)` — called once with the full `SubImageHeader` for each entry,
+    before `IsReadyForOTA()`. Must be light-weight: store the fields needed for
+    the readiness decision (`entry.version`) and for subsequent writes
+    (`entry.length`, `entry.sha256`). Do not start heavy I/O here — defer that
+    to the first `Write()` call so resources are only allocated when `kReady` is
+    confirmed.
+-   `IsReadyForOTA()` → `DeviceReadinessState` — called immediately after
+    `Init()`, with no parameters. The sub-processor uses the version stored
+    during `Init()` to decide: `kReady` (proceed), `kAlreadyUpToDate` (already
+    at target version, skip but counts as verified), `kNotReady` (skip, blocks
     confirmation). Must return quickly — no blocking I/O.
--   `Init(entry)` — called once with the full `SubImageHeader` immediately
-    before the first `Write()`. Gives the sub-processor `entry.length` (total
-    bytes to expect), `entry.version`, and `entry.sha256` upfront.
--   `Write(block)` — called per chunk. The application does whatever is needed
-    with the bytes. The sub-processor knows it has received the last chunk when
-    its running byte total reaches `entry.length` (set by `Init()`).
+-   `Write(block)` — called per chunk, only when `IsReadyForOTA()` returned
+    `kReady`. On the first chunk the sub-processor performs heavy initialisation
+    (e.g. `esp_ota_begin`). The sub-processor knows it has received the last
+    chunk when its running byte total reaches `entry.length` (stored in
+    `Init()`).
 
 `OTAReadiness` is a three-value enum — not a boolean — because the
 confirmation policy (§12.1) requires distinguishing "already up to date" from
@@ -209,7 +213,7 @@ confirmation policy (§12.1) requires distinguishing "already up to date" from
 
 | Value              | Dispatcher action                      | Counts as verified?                             |
 | ------------------ | -------------------------------------- | ----------------------------------------------- |
-| `kReady`           | Call `Init()` then `Write()` per chunk | Yes                                             |
+| `kReady`           | Call `Write()` per chunk               | Yes                                             |
 | `kAlreadyUpToDate` | `SkipData(entry.length)`               | Yes — already at target version                 |
 | `kNotReady`        | `SkipData(entry.length)`               | **No** — blocks `softwareVersion` confirmation  |
 
@@ -235,14 +239,14 @@ defines the interface; applications provide the implementations.
   |   +--------+----------------------------------+  |
   +------------+-------------------------------------+
                |
-               | IsReadyForOTA(targetVersion) → OTAReadiness
-               | Init(SubImageHeader) once if kReady
-               | Write(block) per chunk
+               | Init(SubImageHeader) — always, light
+               | IsReadyForOTA() → DeviceReadinessState
+               | Write(block) per chunk — only when kReady
                v
   +------------+-------------------------------------+
   |      Sub Image Processor (interface)             |
-  |   IsReadyForOTA(targetVersion)      (app-impl)  |
   |   Init(SubImageHeader &)            (app-impl)  |
+  |   IsReadyForOTA()                   (app-impl)  |
   |   Write(block)      → result        (app-impl)  |
   +--------------------------------------------------+
                ^                   ^
@@ -260,13 +264,15 @@ section is parsed the Dispatcher switches to routing mode. It records the
 
 **Dispatcher** — for each entry: looks up the sub-processor by `imageId`. If
 no processor is registered, treats it as `kAlreadyUpToDate` (assumed up to
-date). Otherwise calls `IsReadyForOTA()`. If `kReady`, calls `Init(entry)`
-then feeds chunks via `Write()`. If `kAlreadyUpToDate` or `kNotReady`, calls
-`SkipData(entry.length)`. Advances when `entry.length` bytes are accounted for.
+date). Otherwise calls `Init(entry)` (light) then `IsReadyForOTA()` (no params).
+If `kReady`, feeds chunks via `Write()`. If `kAlreadyUpToDate` or `kNotReady`,
+calls `SkipData(entry.length)`. Advances when `entry.length` bytes are accounted
+for.
 
-**Sub Image Processor** — `Init()` supplies total length, version, and digest
-before the first `Write()`. The sub-processor detects its last chunk when its
-running byte count reaches `entry.length`.
+**Sub Image Processor** — `Init()` is called first (light: stores entry fields).
+`IsReadyForOTA()` uses the stored version to decide readiness. On the first
+`Write()` the sub-processor performs heavy initialisation. It detects its last
+chunk when its running byte count reaches `entry.length`.
 
 **Registration** — applications call a register function before the OTA session
 starts, associating an `imageId` with a sub-processor instance. Each `imageId`
@@ -365,8 +371,11 @@ ProcessPayload(block) → error:
 
             processor = processorMap.Find(entry.imageId)
             # No registered processor → assumed already up to date; does not block confirmation
-            readiness = (processor != null) ? processor.IsReadyForOTA(entry.version)
-                                            : kAlreadyUpToDate
+            if processor != null:
+                processor.Init(entry)            # light: store SubImageHeader for readiness check
+                readiness = processor.IsReadyForOTA()   # no params; uses stored version
+            else:
+                readiness = kAlreadyUpToDate
             recordReadiness(entry.imageId, readiness)  # stored for ConfirmCurrentImage
 
             if readiness != kReady:
@@ -377,7 +386,6 @@ ProcessPayload(block) → error:
                 bytesDelivered = 0
                 return OK                            # SkipData is the next-block request
 
-            processor.Init(entry)   # pass full SubImageHeader before first Write
             entryStarted = true
 
         # feed bytes to sub-processor
@@ -418,8 +426,9 @@ ProcessPayload(block) → error:
   The sub-processor does not signal completion.
 - `OTAReadiness` is recorded per entry at `IsReadyForOTA()` time and used
   later at `ConfirmCurrentImage()`.
-- `Init(entry)` is called before the first `Write()` so the sub-processor has
-  `entry.length` and `entry.sha256` upfront.
+- `Init(entry)` is always called (light: stores entry) before `IsReadyForOTA()`.
+  If `IsReadyForOTA()` returns `kReady`, the sub-processor uses the stored fields
+  on the first `Write()` call to perform heavy initialisation.
 
 ### 5.3 Finalize → Apply → Reboot
 
@@ -480,10 +489,11 @@ from the previous cycle.
 
 ### 5.5 Processor Readiness and `SkipData`
 
-Before feeding bytes to a sub-processor, the Dispatcher calls `IsReadyForOTA()`
-on it. If it returns `kNotReady` or `kAlreadyUpToDate`, the Dispatcher calls
-`SkipData(entry.length)` to tell the Provider to advance its cursor past that
-entire binary. If no processor is registered for that image ID, the entry is
+Before feeding bytes to a sub-processor, the Dispatcher calls `Init(entry)`
+(light: stores the `SubImageHeader`) then `IsReadyForOTA()` (no parameters) on
+it. If `IsReadyForOTA()` returns `kNotReady` or `kAlreadyUpToDate`, the
+Dispatcher calls `SkipData(entry.length)` to tell the Provider to advance its
+cursor past that entire binary. If no processor is registered for that image ID, the entry is
 treated as `kAlreadyUpToDate` — assumed up to date — and also skipped. Those bytes are
 never delivered to the device. The Dispatcher then moves on to the next
 `SubImageHeader` entry.
@@ -602,8 +612,8 @@ BDX layer (any thread)
                                                 └─ Finalize / Apply / Abort run here too
 ```
 
-All Dispatcher logic and sub-processor `IsReadyForOTA()` / `Write()` calls
-execute on the **Matter thread**. Sub-processor implementations therefore do not
+All Dispatcher logic and sub-processor `Init()` / `IsReadyForOTA()` / `Write()`
+calls execute on the **Matter thread**. Sub-processor implementations therefore do not
 need their own synchronization for this path. They must not perform long
 blocking operations on the Matter thread — any slow I/O (bus writes, DMA waits)
 should be dispatched to a worker task. See §10.3.
@@ -736,20 +746,20 @@ downloader and session layer as-is.
 
 The Sub Image Processor interface must expose three operations:
 
-1. **Readiness query** (`IsReadyForOTA(targetVersion)`) — returns
-   `OTAReadiness`. Called once before any bytes are delivered, with
-   `entry.version` as `targetVersion`. The sub-processor uses this to decide
-   whether the component is already at the target version (`kAlreadyUpToDate`),
-   needs updating (`kReady`), or cannot be updated this cycle (`kNotReady`).
-   Must return in milliseconds.
-2. **Initialisation** (`Init`) — called once with the full `SubImageHeader`
-   immediately before the first write, and only when the readiness query
-   returned `kReady`. The sub-processor must store the binary's byte length
-   to self-track progress and detect the last chunk, and must store the
-   `sha256` field to verify integrity when the last chunk is received.
-3. **Write** (`Write`) — called per chunk with raw binary bytes. The
-   Dispatcher guarantees exactly `length` bytes total across all calls, in
-   order, with no headers or framing.
+1. **Initialisation** (`Init(entry)`) — called once with the full `SubImageHeader`
+   for each entry, before the readiness query. Must be light-weight: store the
+   fields needed for the readiness decision (`entry.version`) and for subsequent
+   writes (`entry.length`, `entry.sha256`). Must not start heavy I/O (bus
+   negotiation, partition erase, etc.) — defer that to the first `Write()`.
+2. **Readiness query** (`IsReadyForOTA()`) — returns `DeviceReadinessState`.
+   Called immediately after `Init()`, with no parameters. The sub-processor uses
+   the version stored during `Init()` to decide: `kReady` (proceed),
+   `kAlreadyUpToDate` (skip, counts as verified), `kNotReady` (skip, blocks
+   confirmation). Must return in milliseconds.
+3. **Write** (`Write`) — called per chunk, only when `IsReadyForOTA()` returned
+   `kReady`. On the first chunk the sub-processor performs heavy initialisation
+   using the stored entry fields. The Dispatcher guarantees exactly `length`
+   bytes total across all calls, in order, with no headers or framing.
 
 The default readiness is `kReady`. Implementations whose component is always
 present and always ready need only implement the write operation.
@@ -761,12 +771,13 @@ For each `SubImageHeader` entry the Dispatcher must:
 1. Look up the registered sub-processor by `imageId`. Treat a missing
    registration as `kAlreadyUpToDate` — the component is assumed to be already
    at its expected version on this device.
-2. Call the readiness query and record the result. The result is persisted for
-   use at `ConfirmCurrentImage()` time.
+2. If a processor is found: call `Init(entry)` (light), then call
+   `IsReadyForOTA()` (no params) and record the result. If no processor is
+   found: record `kAlreadyUpToDate`. The result is persisted for use at
+   `ConfirmCurrentImage()` time.
 3. If the result is `kNotReady` or `kAlreadyUpToDate`: invoke skip-data for
    `entry.length` bytes and advance to the next entry.
-4. If the result is `kReady`: call the initialisation operation with the full
-   `SubImageHeader`, then feed chunks via the write operation until
+4. If the result is `kReady`: feed chunks via the write operation until
    `entry.length` bytes have been delivered. The Dispatcher owns the byte
    counter and signals completion — the sub-processor does not.
 
@@ -823,18 +834,22 @@ value across firmware releases.
 
 The Sub Image Processor interface has three methods:
 
-**`IsReadyForOTA(targetVersion)` → `OTAReadiness`** — called once
-before bytes start. The Dispatcher passes `entry.version` from the
-`SubImageHeader` as `targetVersion`. The sub-processor reads its currently
-installed version, compares it against `targetVersion`, and returns one of:
+**`Init(const SubImageHeader & entry)`** — called once for each entry, before
+`IsReadyForOTA()`. Must be light-weight: store `entry.version`, `entry.length`,
+and `entry.sha256` for later use. Do not start heavy I/O here (bus negotiation,
+partition erase, etc.) — defer that to the first `Write()` call.
 
-| Node state                                                 | Return value       | Effect                                                                    |
-| ---------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------- |
-| Component reachable, installed version ≠ `targetVersion`  | `kReady`           | Dispatcher calls `Init()` then `Write()`.                                 |
-| Component installed version == `targetVersion`             | `kAlreadyUpToDate` | Dispatcher skips. Counts as verified at confirmation — no update needed.  |
-| Component busy (initializing, running a critical task)     | `kNotReady`        | Dispatcher skips. Blocks `softwareVersion` confirmation this cycle.       |
-| Component unreachable or not responding                    | `kNotReady`        | Dispatcher skips. Blocks confirmation. Application should log.            |
-| Component in error state requiring manual recovery         | `kNotReady`        | Dispatcher skips. Blocks confirmation. Update would be unsafe.            |
+**`IsReadyForOTA()` → `DeviceReadinessState`** — called immediately after
+`Init()`, with no parameters. The sub-processor uses the version stored during
+`Init()` to decide:
+
+| Node state                                                          | Return value       | Effect                                                                   |
+| ------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------ |
+| Component reachable, installed version ≠ stored `entry.version`    | `kReady`           | Dispatcher calls `Write()` per chunk.                                    |
+| Component installed version == stored `entry.version`               | `kAlreadyUpToDate` | Dispatcher skips. Counts as verified at confirmation — no update needed. |
+| Component busy (initializing, running a critical task)              | `kNotReady`        | Dispatcher skips. Blocks `softwareVersion` confirmation this cycle.      |
+| Component unreachable or not responding                             | `kNotReady`        | Dispatcher skips. Blocks confirmation. Application should log.           |
+| Component in error state requiring manual recovery                  | `kNotReady`        | Dispatcher skips. Blocks confirmation. Update would be unsafe.           |
 
 Rules:
 - Must return in **milliseconds**. No blocking I/O. Any slow initialization
@@ -845,12 +860,6 @@ Rules:
 - The sub-processor must log the specific reason so that skips are observable
   and diagnosable.
 - Default returns `kReady`. Override whenever readiness depends on runtime state.
-
-**`Init(const SubImageHeader & entry)`** — called once immediately before the
-first `Write()`, only when `IsReadyForOTA()` returned `kReady`. The sub-processor
-must store at minimum `entry.length` to self-track progress. It should also
-record `entry.version` for cross-verification and store `entry.sha256` to verify
-integrity on the last chunk.
 
 **Write method** — called per chunk. The Dispatcher guarantees:
 - Chunks arrive sequentially from byte 0 of the binary's data.

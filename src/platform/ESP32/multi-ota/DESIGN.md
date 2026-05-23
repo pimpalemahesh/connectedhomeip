@@ -30,7 +30,7 @@ without any changes to the OTA Requestor, Provider protocol, or BDX layer.
 | **Bundle**              | A single `.ota` file containing a `MultiImageHeader` (which embeds one `SubImageHeader` per component in its `subImages[]` field) followed by all component binaries concatenated. |
 | **Main Image Processor**| The OTA image processor implementation the Matter OTA Requestor calls. Owns the full download lifecycle and contains the Dispatcher.                |
 | **Dispatcher**          | The routing engine inside the Main Image Processor. Parses the bundle header, maintains the `imageId → sub-processor` map, and routes or skips each component's bytes. |
-| **Sub Image Processor** | An application-provided handler for one component. Implements `Init(entry)`, `IsReadyForOTA()`, `Write()`, `Confirm()`, and `Abort(context)`.      |
+| **Sub Image Processor** | An application-provided handler for one component. Implements `Init(entry)`, `IsReadyForOTA()`, `Write()`, `OnWriteComplete(result)`, `Confirm(expectedVersion)`, and `Abort(context)`. |
 | **Image ID**            | A 4-byte unsigned integer (uint32, `0x00000000`–`0xFFFFFFFF`) that identifies which sub-processor handles a given component. Stable ABI between firmware and packaging tool. |
 | **`SkipData(n)`**       | BDX `BlockQueryWithSkip` — tells the Provider to advance its cursor by `n` bytes without delivering them.                                          |
 | **Confirmation**        | The platform action that marks newly booted firmware as valid and cancels any pending rollback. Triggered by `ConfirmCurrentImage()`.               |
@@ -198,7 +198,7 @@ calls `SkipData()` to advance past it. When the matched sub-processor returns
 not-ready, `SkipData()` is also called but the entry blocks confirmation.
 
 **Sub Image Processor** — an interface the application registers per image ID.
-Five methods form the contract:
+Six methods form the contract:
 
 -   `Init(entry)` — called once with the full `SubImageHeader` for each entry,
     before `IsReadyForOTA()`. Must be light-weight: store the fields needed for
@@ -211,18 +211,51 @@ Five methods form the contract:
     during `Init()` to decide: `kReady` (proceed), `kAlreadyUpToDate` (already
     at target version, skip but counts as verified), `kNotReady` (skip, blocks
     confirmation). Must return quickly — no blocking I/O.
--   `Write(block)` — called per chunk, only when `IsReadyForOTA()` returned
-    `kReady`. On the first chunk the sub-processor performs heavy initialisation
-    (e.g. `esp_ota_begin`). The sub-processor knows it has received the last
-    chunk when its running byte total reaches `entry.length` (stored in
-    `Init()`).
--   `Confirm()` — called on every sub-processor that had `Init()` called, during
-    `ConfirmCurrentImage()` (§5.1). For `kReady` sub-processors: verify the
-    component is now running `entry.version`. For `kNotReady` sub-processors:
-    re-check whether the component is now at its expected version (the post-reboot
-    attempt). Returns an error if the check fails; any failure withholds
-    `softwareVersion` confirmation. `kAlreadyUpToDate` sub-processors may return
-    success immediately.
+-   `Write(block)` → `WriteResult` — called per chunk, only when
+    `IsReadyForOTA()` returned `kReady`. On the first chunk the sub-processor
+    performs heavy initialisation. Two independent byte counters exist:
+    the Dispatcher's counter (decides when to stop feeding this entry and move
+    to the next) and the sub-processor's own running total (detects the last
+    chunk for SHA-256 finalisation and commit logic). The sub-processor must
+    maintain its own running total and compare it against `entry.length`
+    (stored during `Init()`) to detect the last chunk. Returns one of two values:
+
+    | Return value | Meaning | Dispatcher action |
+    | ------------ | ------- | ----------------- |
+    | `kDone`      | Write completed synchronously — the Dispatcher may immediately proceed | Call `FetchNextData()` or `SkipData()` for the next entry |
+    | `kPending`   | Write is in progress asynchronously — the Dispatcher must wait | Suspend; do not call `FetchNextData()` or `SkipData()` until `OnWriteComplete()` is called back |
+
+    A sub-processor that writes directly to a local partition (which internally
+    uses platform scheduling but resolves within the same dispatch cycle) returns
+    `kDone`. A sub-processor that delegates to a worker task (bus transfer, DMA)
+    returns `kPending`.
+
+-   `OnWriteComplete(result)` — called by the sub-processor (not by the
+    framework) when an asynchronous write operation finishes. This is the
+    mechanism by which a sub-processor that returned `kPending` from `Write()`
+    unblocks the Dispatcher. The Dispatcher's `OnWriteComplete()` handler
+    **must post its continuation back to the Matter thread** (via
+    `PlatformMgr().ScheduleWork()`) before returning — it must not call
+    `FetchNextData()` or any BDX operation directly from the worker task
+    context. `FetchNextData()` and `SkipData()` drive the BDX state machine
+    and are only safe to call from the Matter event loop thread. Once resumed
+    on the Matter thread: on success, call `FetchNextData()` (or skip as
+    applicable); on error, set `mLastError` and let the SDK call `Abort()`.
+    Sub-processors whose `Write()` always returns `kDone` never call
+    `OnWriteComplete()`.
+
+    **`OnWriteComplete()` must be called exactly once per `kPending` `Write()`
+    call, from a task context (not from within the `Write()` call itself).** The
+    Dispatcher holds a reference to the copied block buffer until the Matter
+    thread resumes after `OnWriteComplete()`; only then is the buffer released
+    and the next BDX block requested.
+
+-   `Confirm(expectedVersion)` — called on every sub-processor that had `Init()`
+    called during the download, at `ConfirmCurrentImage()` time (§5.1). The
+    framework passes the persisted expected version. The sub-processor compares
+    the component's current installed version against `expectedVersion` and
+    returns success or error. Does not require `Init()` to have been called
+    first — all information needed is in `expectedVersion`.
 -   `Abort(context)` — called on every sub-processor that had `Init()` called
     whenever the OTA session ends without completing normally — whether due to an
     error or a deliberate cancellation. `AbortContext` carries two fields:
@@ -232,9 +265,19 @@ Five methods form the contract:
     | `reason` | `kError`, `kCancelled`| `kError`: session ended due to a failure; `kCancelled`: deliberate abort by the application |
     | `error`  | platform error code   | The specific error that caused the abort; unset when `reason` is `kCancelled` |
 
+    The Main Image Processor determines the reason using an internal `mLastError`
+    field. Whenever `Write()` or any internal Dispatcher operation returns an
+    error, the Main Image Processor saves it into `mLastError` before propagating
+    the error to the SDK. When the SDK then calls `Abort()` (which carries no
+    reason), the Main Image Processor checks `mLastError`: if set, the reason is
+    `kError` with that code; if not set (the SDK cancelled without a prior
+    internal failure), the reason is `kCancelled`. `mLastError` is cleared at
+    the start of each new download session.
+
     The sub-processor may use `context.reason` to log or handle the two cases
-    differently. It must discard any partially written data and release all
-    resources acquired since `Init()`. Must not block.
+    differently. It must discard any partially written data, call off any pending
+    async operation, and release all resources acquired since `Init()`. Must not
+    block.
 
 `DeviceReadinessState` is a three-value enum — not a boolean — because the
 confirmation policy (§12.1) requires distinguishing "already up to date" from
@@ -279,8 +322,8 @@ defines the interface; applications provide the implementations.
           v
   +-------+------------------------------------------+
   |              Main Image Processor                 |
-  |   records DeviceReadinessState per entry          |
-  |   blocks confirmation if any = kNotReady          |
+  |   mLastError — set on any internal failure        |
+  |   currentBytePosition — tracks stream position    |
   |   +-------------------------------------------+  |
   |   |              Dispatcher                   |  |
   |   |   MultiImageHeader (incl. subImages[])    |  |
@@ -288,19 +331,23 @@ defines the interface; applications provide the implementations.
   |   |   routes chunks / calls SkipData()        |  |
   |   +--------+----------------------------------+  |
   +------------+-------------------------------------+
-               |
+               |  framework → sub-processor
                | Init(SubImageHeader) — always, light
                | IsReadyForOTA() → DeviceReadinessState
-               | Write(block) per chunk — only when kReady
-               | Confirm() — post-reboot per-entry check
+               | Write(block) → kDone | kPending
+               | Confirm(expectedVersion) — first-boot per-entry check
                | Abort(AbortContext) — on error or cancel
+               |
+               |  sub-processor → framework (async only)
+               | OnWriteComplete(result) ────────────────►
                v
   +------------+-------------------------------------+
   |      Sub Image Processor (interface)             |
   |   Init(SubImageHeader)              (app-impl)  |
   |   IsReadyForOTA()                   (app-impl)  |
-  |   Write(block)      → result        (app-impl)  |
-  |   Confirm()         → result        (app-impl)  |
+  |   Write(block)  → kDone|kPending    (app-impl)  |
+  |   OnWriteComplete(result) — calls framework      |
+  |   Confirm(expectedVersion) → result  (app-impl)  |
   |   Abort(AbortContext)               (app-impl)  |
   +--------------------------------------------------+
                ^                   ^
@@ -310,23 +357,31 @@ defines the interface; applications provide the implementations.
         platform layer)    application)
 ```
 
-**Main Image Processor** receives every BDX block. Before any data arrives it
-triggers the Dispatcher to begin `MultiImageHeader` accumulation. Once the full
-`MultiImageHeader` (preamble + `subImages[]`) is parsed the Dispatcher switches
-to routing mode. It records the `DeviceReadinessState` result for each entry and uses it
-in `ConfirmCurrentImage()` (§5.1, §12.1).
+**Main Image Processor** lifecycle on the SDK interface:
 
-**Dispatcher** — for each entry in `multiImageHeader.subImages[]`: looks up the
-sub-processor by `imageId`. If no processor is registered, treats it as
-`kAlreadyUpToDate` (assumed up to date). Otherwise calls `Init(entry)` (light)
-then `IsReadyForOTA()` (no params). If `kReady`, feeds chunks via `Write()`. If
-`kAlreadyUpToDate` or `kNotReady`, calls `SkipData(entry.length)`. Advances when
-`entry.length` bytes are accounted for.
+- `PrepareDownload()` — called first by the OTA Requestor. Must return
+  immediately (defers via `ScheduleWork`). Resets all session state: clears
+  `mLastError`, resets `currentBytePosition` to zero, resets the header-parse
+  state machine, and prepares for a fresh download. Any NVS entries from a
+  previous `softwareVersion` are erased here if the incoming version differs.
+- `ProcessBlock()` — receives every BDX block. Immediately deep-copies the
+  block data into an owned buffer, schedules `HandleProcessBlock()` on the
+  Matter thread, and returns. Tracks `mLastError` and `currentBytePosition`.
+  The normative routing algorithm is in §9.1 R2.
+- `Finalize()` / `Apply()` / `Abort()` — all must return immediately and defer
+  real work via `ScheduleWork`. See §6 for the ordering guarantee between
+  `Finalize()` and the last `ProcessBlock()`.
 
-**Sub Image Processor** — `Init()` is called first (light: stores entry fields).
-`IsReadyForOTA()` uses the stored version to decide readiness. On the first
-`Write()` the sub-processor performs heavy initialisation. It detects its last
-chunk when its running byte count reaches `entry.length`.
+**Dispatcher** — validates each entry's offset, looks up its sub-processor,
+calls `Init(entry)` and `IsReadyForOTA()`. For `kNotReady`/`kAlreadyUpToDate`
+calls `SkipData()` — which is the next BDX block request; never follow it with
+`FetchNextData()`. For `kReady` calls `Write()`, then either `FetchNextData()`
+(`kDone`) or suspends until the sub-processor calls `OnWriteComplete()` (`kPending`).
+A block may span two entries; skip distances are derived from `currentBytePosition`.
+Full routing rules: §9.1 R2.
+
+**Sub Image Processor** — receives `Init()`, `IsReadyForOTA()`, then `Write()`
+per chunk if `kReady`. Full interface contract: §4.1.
 
 **Registration** — applications call a register function before the OTA session
 starts, associating an `imageId` with a sub-processor instance. Each `imageId`
@@ -348,46 +403,59 @@ may have at most one registered processor; duplicate registration is an error.
    signalling the platform to mark the firmware as confirmed:
    a. The running `softwareVersion` matches the version the Requestor
       downloaded.
-   b. For each entry that had a registered processor with `Init()` called:
-      - If the processor returned `kReady`: `Confirm()` is called to verify the
-        update was actually applied.
-      - If the processor returned `kNotReady`: `Confirm()` is called as a
-        post-reboot re-check to see if the component is now at its expected
-        version.
-      - If the processor returned `kAlreadyUpToDate`: `Confirm()` is called;
-        the processor should return success immediately since no update was
-        needed.
-      - If no processor was registered for an entry (recorded as
-        `kAlreadyUpToDate` by the Dispatcher): no `Confirm()` call is made;
-        the entry is counted as verified automatically.
+   b. For each entry that had a registered processor with `Init()` called, the
+      framework looks up the sub-processor by the persisted `imageId` and calls
+      `Confirm(expectedVersion)` with the persisted version:
+      - Component is at `expectedVersion` → `Confirm()` returns success.
+      - Component is unavailable → `Confirm()` does a one-time opportunistic
+        check; if it still cannot be reached, returns an error.
+      - Component is at a different version (update failed or was skipped)
+        → `Confirm()` returns an error.
+      - No processor registered for an entry (recorded as `kAlreadyUpToDate`
+        by the Dispatcher) → no `Confirm()` call; the entry is counted as
+        verified automatically.
       If any sub-processor's `Confirm()` returns an error, confirmation is
       withheld.
-4. If either check fails, `ConfirmCurrentImage()` returns an error. Before
-   triggering the rollback reboot, the Main Image Processor invokes the retry
-   policy hook (§5.2) so the platform can schedule a `QueryImage` re-trigger
-   for immediately after the rollback completes. The device reverts to the old
-   `softwareVersion` and the OTA window reopens.
+4. If either check fails, `ConfirmCurrentImage()` returns an error. The SDK
+   calls `mRequestor->Reset()`, which clears the `kApplying` state from
+   persistent storage. **The SDK does not trigger a reboot.** The device
+   continues running the new firmware, but that firmware remains unconfirmed by
+   the platform bootloader — meaning a rollback will occur on the next reboot
+   for any reason (power loss, watchdog, manual reset). Before returning the
+   error, the Main Image Processor invokes the retry policy hook (§5.2) so the
+   platform can schedule a new `QueryImage`. This new OTA session runs on the
+   still-booted new firmware: sub-images that are already at their target
+   version return `kAlreadyUpToDate` and are skipped; only the missing
+   sub-image is downloaded and written. If that session succeeds,
+   `ConfirmCurrentImage()` passes, the bootloader confirms the firmware, and
+   the mixed-version state is resolved without a rollback.
 
-This extends the single-image confirmation flow with step 3b. The Main Image
-Processor persists two things in NVS across the reboot (keyed by the
-`softwareVersion` being applied):
+   If retries are exhausted (see §5.2), the platform must trigger a deliberate
+   reboot so the bootloader rolls back to the previously confirmed firmware.
+   Leaving the device running indefinitely on unconfirmed firmware is not safe.
 
-- The per-entry `DeviceReadinessState` map, so that `ConfirmCurrentImage()`
-  knows which processors to call `Confirm()` on and which to skip.
-- The `SubImageHeader` for every entry whose registered processor had `Init()`
-  called. On the next boot, before invoking `Confirm()`, the framework
-  re-calls `Init(entry)` on each sub-processor using the persisted header.
-  This restores `entry.version` (and `entry.sha256`, `entry.length`, etc.)
-  that the sub-processor stored during the download. Sub-processor
-  implementations must not assume that `entry` fields are available in
-  `Confirm()` from the same power cycle as the download.
+**`ConfirmCurrentImage()` is called exactly once per firmware boot.** The
+`kApplying` state that causes `IsFirstImageRun()` to return true is cleared by
+`mRequestor->Reset()` when confirmation fails — subsequent boots of the same
+firmware do not re-enter the confirmation flow. Recovery after a failed
+confirmation is always through a new OTA cycle, not a repeated confirmation
+attempt.
+
+The Main Image Processor persists one thing in NVS across the reboot (keyed by
+the `softwareVersion` being applied):
+
+- For every entry whose registered processor had `Init()` called: the `imageId`
+  and the expected `version` (8 bytes per entry). On the next boot,
+  `ConfirmCurrentImage()` looks up each sub-processor by `imageId` and calls
+  `Confirm(expectedVersion)` directly — no `Init()` or `IsReadyForOTA()` call
+  is needed post-reboot. The other `SubImageHeader` fields (`offset`, `length`,
+  `sha256`) are download-phase-only and are not persisted.
 
 Once `ConfirmCurrentImage()` succeeds — meaning all components are verified
 and the new `softwareVersion` is committed — the Main Image Processor **must
-erase the NVS readiness map, the persisted `SubImageHeader` entries, and
-`attemptCount`**. This ensures the next OTA cycle (for `softwareVersion + 1`
-or any future bundle) starts with a clean slate and does not inherit stale
-entries from the previous cycle.
+erase the persisted `{imageId, version}` records and `attemptCount`**. This ensures
+the next OTA cycle (for `softwareVersion + 1` or any future bundle) starts with
+a clean slate and does not inherit stale entries from the previous cycle.
 
 ### 5.2 Retry policy for incomplete cycles
 
@@ -417,14 +485,14 @@ the `OnPendingNodeUpdates` operation, passing two arguments:
   and persists it in NVS, keyed by `softwareVersion`, so that post-rollback
   retries do not reset it. When the Main Image Processor begins a new OTA session
   for a different `softwareVersion`, it erases all NVS entries from the previous
-  version (readiness map, persisted headers, and attempt counter) before
-  proceeding, ensuring no stale state carries over between bundles.
+  version (`{imageId, version}` records and attempt counter) before proceeding,
+  ensuring no stale state carries over between bundles.
 
 The platform implementation decides what to do:
 
 | Decision                       | Behaviour                                                                                              |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Re-trigger immediately         | Issue a new `QueryImage` before returning.                                                             |
+| Re-trigger immediately         | Schedule a `QueryImage` with zero delay (via `ScheduleWork` or a zero-interval timer) and return. Must not call `QueryImage` synchronously from within the hook — the OTA state machine has not yet unwound to `kIdle` at hook-call time. |
 | Re-trigger after a fixed delay | Schedule a `QueryImage` to fire after a platform-chosen interval.                                      |
 | Exponential backoff            | Increase the delay geometrically with attempt count; e.g. `30s × 2^attemptCount`, capped at a maximum.|
 | Retry up to N times then stop  | Compare attempt count against a platform-defined limit; stop scheduling and raise an alert when exceeded.|
@@ -433,28 +501,41 @@ The platform implementation decides what to do:
 The default behaviour is to do nothing. Platforms that require fast convergence
 for connected nodes must override this operation.
 
+**All implementations must schedule the `QueryImage` asynchronously** — never
+call it synchronously from within `OnPendingNodeUpdates`. When the hook is
+called, the OTA state machine has not yet returned to `kIdle`: on the
+`ConfirmCurrentImage()` path the state is still `kApplying`; on the download
+path the BDX session teardown has not fully completed. A synchronous
+`QueryImage` call at this point would hit the wrong state and either be
+silently rejected or corrupt the state machine. Scheduling via `ScheduleWork`
+or a zero-interval timer ensures the call fires only after the current event
+has fully unwound and the requestor has transitioned back to `kIdle`.
+
 #### When the hook is called
 
-| Event                                                           | Hook called?                                        | Notes                                                             |
-| --------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------- |
-| Download completes; all entries `kReady` or `kAlreadyUpToDate` | No                                                  | Cycle was complete — no retry needed.                             |
-| Download completes; one or more entries `kNotReady`             | **Yes** — before the apply step schedules a reboot  | Platform can schedule a re-trigger for after the reboot.          |
-| `ConfirmCurrentImage()` withholds confirmation (post-reboot)    | **Yes** — before the rollback reboot                | Re-trigger fires after rollback brings old `softwareVersion` back.|
+| Event | Hook called? | Device state at hook time | Notes |
+| ----- | ------------ | ------------------------- | ----- |
+| Download completes; all entries `kReady` or `kAlreadyUpToDate` | No | — | Cycle was complete — no retry needed. |
+| Download completes; one or more entries `kNotReady` | **Yes** — before Apply | Old firmware still running | Platform may schedule a retry after the upcoming reboot. |
+| `ConfirmCurrentImage()` withholds confirmation | **Yes** — before returning error | **New firmware running, unconfirmed** | Platform should schedule a new `QueryImage` immediately. The retry session runs on the new firmware; only the missing sub-image is downloaded. If the retry succeeds, the bootloader confirms the firmware and no rollback occurs. |
 
-Calling the hook before the rollback reboot ensures the scheduled re-trigger
-fires on the next boot, immediately re-opening the OTA window rather than
-waiting for the periodic timer.
+When `ConfirmCurrentImage()` withholds confirmation, the new firmware is still
+running but is unconfirmed by the bootloader. A rollback will occur on the next
+reboot for any reason. The retry hook is the opportunity to fix this by
+scheduling an immediate `QueryImage` and completing the missing sub-image update
+before any reboot happens.
 
 #### Limits and failure cases
 
 - **Permanent unavailability.** If a node is decommissioned or has a hardware
   fault, `IsReadyForOTA()` will always return `kNotReady`. The platform must
-  implement a max-retry limit and an alerting or exclusion mechanism for this
-  case; otherwise retries continue indefinitely. The attempt count is the natural
-  signal for detecting this.
+  implement a max-retry limit. When the limit is reached, the platform **must
+  trigger a deliberate reboot** so the bootloader rolls back to the previously
+  confirmed firmware. Leaving the device running indefinitely on unconfirmed
+  firmware is unsafe. The attempt count is the natural signal for detecting this.
 - **Node recovers between cycles.** If `IsReadyForOTA()` returned `kNotReady`
-  but the node recovers before the retry fires, the next full OTA cycle will
-  pick it up cleanly — no special handling needed.
+  but the node recovers before the retry fires, the next OTA cycle will pick it
+  up cleanly — no special handling needed.
 - **No impact on the BDX session in progress.** The retry hook runs after the
   current BDX session has fully ended. It never interrupts or restarts a live
   download.
@@ -466,28 +547,71 @@ waiting for the periodic timer.
 ```
 BDX layer (any thread)
    │
-   ├─ Main Image Processor (block received)
+   ├─ ProcessBlock() called
    │      │
-   │      ├─ copy block to internal buffer
-   │      └─ schedule work on Matter thread
-   │                          ──────────────►
-                                              Matter thread
-                                                │
-                                                ├─ strip outer Matter OTA header (once)
-                                                ├─ Phase 1: accumulate MultiImageHeader (preamble + subImages[])
-                                                ├─ Phase 2: Dispatcher routes blocks
-                                                │     ├─ SubImageProcessor.Write()
-                                                │     ├─ SkipData() if not ready
-                                                │     └─ request next block from BDX
-                                                │
-                                                └─ Finalize / Apply / Abort run here too
+   │      ├─ DEEP COPY block data into owned buffer   ← buffer safe after return
+   │      └─ schedule HandleProcessBlock on Matter thread
+   │                          ──────────────────────────►
+                                                         Matter thread
+                                                           │
+                                                           ├─ strip outer Matter OTA header (once)
+                                                           ├─ Phase 1: accumulate MultiImageHeader
+                                                           ├─ Phase 2: Dispatcher routes blocks
+                                                           │
+                                                           │  [kReady, Write() returns kDone]
+                                                           ├─ SubImageProcessor.Write() ──► kDone
+                                                           │     └─ FetchNextData() ─────────────► BDX: next BlockQuery
+                                                           │
+                                                           │  [kReady, Write() returns kPending]
+                                                           ├─ SubImageProcessor.Write() ──► kPending
+                                                           │     └─ Dispatcher suspends (no BDX call)
+                                                           │
+                                                           │               Worker task (any thread)
+                                                           │                      │
+                                                           │                      ├─ async I/O completes
+                                                           │                      └─ OnWriteComplete(result)
+                                                           │                                │
+                                                           │           ◄───────────────────┘
+                                                           ├─ Dispatcher resumes
+                                                           │     └─ FetchNextData() ─────────────► BDX: next BlockQuery
+                                                           │
+                                                           │  [kNotReady or kAlreadyUpToDate]
+                                                           ├─ SkipData(distance) ───────────────► BDX: BlockQueryWithSkip
+                                                           │     └─ (no FetchNextData — skip IS the query)
+                                                           │
+                                                           └─ Finalize / Apply / Abort run here too
 ```
 
+**Block buffer lifetime:** The `ByteSpan` passed to `ProcessBlock()` points into
+the BDX layer's receive buffer. The BDX layer may reuse that buffer as soon as
+`ProcessBlock()` returns. The Main Image Processor must deep-copy the block data
+into its own owned buffer before returning. The owned buffer must remain valid
+until either `FetchNextData()` is called (sync path) or `OnWriteComplete()` is
+received (async path). Only then may the buffer be released.
+
+**`SkipData()` vs `FetchNextData()` are mutually exclusive per block.** Calling
+`SkipData()` sends a `BlockQueryWithSkip` BDX message immediately — it is the
+next block request. The Provider responds with a new block at the new offset,
+which arrives as the next `ProcessBlock()` call. Calling `FetchNextData()` after
+`SkipData()` would send a second request while one is already in-flight,
+corrupting the BDX stop-and-wait state machine. The Dispatcher calls exactly one
+of these per logical step.
+
 All Dispatcher logic and sub-processor `Init()` / `IsReadyForOTA()` / `Write()`
-calls execute on the **Matter thread**. Sub-processor implementations therefore do not
-need their own synchronization for this path. They must not perform long
+calls execute on the **Matter thread**. Sub-processors must not perform long
 blocking operations on the Matter thread — any slow I/O (bus writes, DMA waits)
-should be dispatched to a worker task. See §10.3.
+must be dispatched to a worker task, with `OnWriteComplete()` called back when
+done. See §10.3.
+
+**`Finalize()` and `ProcessBlock()` ordering.** The BDX layer calls
+`ProcessBlock()` and then immediately calls `Finalize()` (synchronously, in the
+same event handler) when the last block carries the EOF flag. Both methods must
+return immediately and defer their actual work via `PlatformMgr().ScheduleWork()`
+onto the same FIFO Matter thread queue. This is the only mechanism that
+guarantees `HandleFinalize` always executes after `HandleProcessBlock` for the
+last block. If either method does real work inline instead of deferring, the
+ordering guarantee is lost and `Finalize()` may run before the last block's
+bytes have been processed.
 
 ---
 
@@ -613,39 +737,18 @@ downloader and session layer as-is.
 
 ### 9.1 Platform Layer Requirements
 
-#### R1 — Sub Image Processor interface: five operations
+#### R1 — Sub Image Processor interface: six operations
 
-The Sub Image Processor interface must expose five operations:
+The full contract for each operation is defined in §4.1. The six operations are:
 
-1. **Initialisation** (`Init(entry)`) — called once with the full `SubImageHeader`
-   for each entry, before the readiness query. Must be light-weight: store the
-   fields needed for the readiness decision (`entry.version`) and for subsequent
-   writes (`entry.length`, `entry.sha256`). Must not start heavy I/O (bus
-   negotiation, partition erase, etc.) — defer that to the first `Write()`.
-2. **Readiness query** (`IsReadyForOTA()`) — returns `DeviceReadinessState`.
-   Called immediately after `Init()`, with no parameters. The sub-processor uses
-   the version stored during `Init()` to decide: `kReady` (proceed),
-   `kAlreadyUpToDate` (skip, counts as verified), `kNotReady` (skip, blocks
-   confirmation). Must return in milliseconds.
-3. **Write** (`Write`) — called per chunk, only when `IsReadyForOTA()` returned
-   `kReady`. On the first chunk the sub-processor performs heavy initialisation
-   using the stored entry fields. The Dispatcher guarantees exactly `length`
-   bytes total across all calls, in order, with no headers or framing.
-   SHA-256 verification is the sub-processor's responsibility: the framework
-   delivers `entry.sha256` via `Init()` but does not compute or check the
-   digest itself. The sub-processor must accumulate its own digest (e.g., using
-   a SHA-256 library) and verify it matches `entry.sha256` when the last chunk
-   arrives; if the digest does not match, `Write()` must return an error on
-   that last chunk.
-4. **Confirm** (`Confirm()`) — called during `ConfirmCurrentImage()` on every
-   sub-processor that had `Init()` called. For `kReady` sub-processors: verify
-   the component is now running `entry.version`. For `kNotReady` sub-processors:
-   post-reboot re-check of component version. Returns an error if verification
-   fails; any failure withholds `softwareVersion` confirmation.
-5. **Abort** (`Abort(context)`) — called on every sub-processor that had `Init()`
-   called whenever the session ends without completing normally. `context` is an
-   `AbortContext` carrying the reason (error or cancellation). Must discard
-   partial writes, release all resources acquired since `Init()`, and not block.
+| # | Operation | One-line rule |
+|---|-----------|---------------|
+| 1 | `Init(entry)` | Light-weight; store entry fields; no heavy I/O. |
+| 2 | `IsReadyForOTA()` | Returns `DeviceReadinessState`; must complete in milliseconds. |
+| 3 | `Write(block)` | Returns `kDone` (sync) or `kPending` (async); verifies SHA-256 on last chunk. |
+| 4 | `OnWriteComplete(result)` | Called by sub-processor from worker task; exactly once per `kPending` return. |
+| 5 | `Confirm(expectedVersion)` | First-boot check that component is at `expectedVersion`; no prior `Init()` required. |
+| 6 | `Abort(context)` | Discard partial state, cancel async ops, release resources, do not block. |
 
 The default readiness is `kReady`. Implementations whose component is always
 present and always ready need only implement `Write`, `Confirm`, and `Abort`;
@@ -653,35 +756,67 @@ the others have safe defaults.
 
 #### R2 — Dispatcher routing behaviour
 
+The Dispatcher maintains `currentBytePosition`, initialised to
+`sizeof(MultiImageHeader)` (the first byte of binary data after the header).
+
 For each entry in `MultiImageHeader.subImages[]` the Dispatcher must:
 
-1. Look up the registered sub-processor by `imageId`. Treat a missing
+1. **Validate** `currentBytePosition == entry.offset`. If not, the bundle is
+   malformed — abort the session with an error.
+2. **Validate** `entry.length > 0` and `entry.offset + entry.length ≤ payloadSize`
+   (where `payloadSize` is from the outer Matter OTA header). Note that
+   `entry.length` is a 4-byte field and is passed to `SkipData()` which accepts
+   a maximum of `UINT32_MAX` bytes per call. Entries that would require a skip
+   larger than this are rejected.
+3. **Look up** the registered sub-processor by `imageId`. Treat a missing
    registration as `kAlreadyUpToDate` — the component is assumed to be already
    at its expected version on this device.
-2. If a processor is found: call `Init(entry)` (light), then call
+4. If a processor is found: call `Init(entry)` (light), then call
    `IsReadyForOTA()` (no params) and record the result. If no processor is
-   found: record `kAlreadyUpToDate`. The result is persisted for use at
-   `ConfirmCurrentImage()` time.
-3. If the result is `kNotReady` or `kAlreadyUpToDate`: invoke skip-data for
-   `entry.length` bytes and advance to the next entry.
-4. If the result is `kReady`: feed chunks via the write operation until
-   `entry.length` bytes have been delivered. The Dispatcher owns the byte
-   counter and signals completion — the sub-processor does not.
+   found: record `kAlreadyUpToDate`.
+5. **If `kNotReady` or `kAlreadyUpToDate`:** compute the skip distance as
+   `(entry.offset + entry.length) - currentBytePosition`. This accounts for
+   any bytes of this entry already consumed by the current block (split-block
+   case). Call `SkipData(skipDistance)`. `SkipData()` sends a
+   `BlockQueryWithSkip` BDX message immediately — this is the next block
+   request. **Do not call `FetchNextData()` after `SkipData()`**; doing so
+   sends a second BDX request while one is already in-flight, corrupting the
+   stop-and-wait state machine.
+6. **If `kReady`:** feed chunks via `Write()` until `entry.length` bytes have
+   been delivered. The Dispatcher owns its routing counter (decides when to
+   stop feeding this entry and move to the next); the sub-processor maintains
+   its own running total independently (for SHA-256 finalisation and commit
+   logic — see §4.1). After
+   each `Write()`:
+   - If `Write()` returns `kDone`: call `FetchNextData()` to request the next
+     BDX block — **unless this was the last chunk of the last entry**
+     (`currentBytePosition + entry.length == payloadSize`). After the last
+     entry there is no next block to request; the BDX layer has already
+     scheduled `Finalize()` and calling `FetchNextData()` at this point would
+     send a spurious `BlockQuery` into an EOF session, corrupting the BDX
+     state machine.
+   - If `Write()` returns `kPending`: suspend the Dispatcher. Wait for the
+     sub-processor to call `OnWriteComplete()`. On success, call
+     `FetchNextData()` (same last-entry exception applies). On error, set
+     `mLastError` and let the SDK call `Abort()`.
+7. **Advance** `currentBytePosition` by `entry.length` after each entry is
+   fully delivered or skipped.
+
+**Split-block rule:** A single BDX block may contain bytes belonging to more
+than one entry. When the Dispatcher finishes entry[i]'s bytes mid-block, it
+immediately transitions to entry[i+1] using the remaining bytes without waiting
+for a new `ProcessBlock()` call. It runs steps 1–6 above for entry[i+1] using
+the remaining bytes. If entry[i+1] is `kNotReady` or `kAlreadyUpToDate`, the
+skip distance in step 5 correctly resolves to less than `entry[i+1].length`
+because `currentBytePosition` already accounts for the bytes consumed from the
+current block.
 
 #### R3 — Retry hook: `OnPendingNodeUpdates`
 
-The Main Image Processor must expose an overridable `OnPendingNodeUpdates`
-operation that platforms use to implement a retry policy. The operation receives:
-
-- The list of image IDs whose sub-processors returned `kNotReady` this cycle.
-- The attempt count — number of times this operation has been called for the
-  current `softwareVersion`, persisted across reboots.
-
-The default behaviour is to do nothing (fall back to the periodic `QueryImage`
-timer). A platform override may schedule an immediate or delayed re-trigger,
-implement exponential backoff, enforce a max-retry limit, or raise an alert for
-persistent failures. The calling convention and scheduling mechanism are left to
-the platform.
+The retry hook is fully specified in §5.2. The Main Image Processor must expose
+`OnPendingNodeUpdates` as an overridable operation receiving the list of pending
+image IDs and the persisted `attemptCount`. The default behaviour is to do
+nothing; platforms override to implement scheduling, backoff, and retry limits.
 
 ### 9.2 Compatibility Notes
 
@@ -719,73 +854,46 @@ value across firmware releases.
 
 ### 10.2 Implement the Sub Image Processor interface
 
-The Sub Image Processor interface has five methods:
+The full interface contract is in §4.1. Implementation notes for each method:
 
-**`Init(entry)`** — called once for each entry, before
-`IsReadyForOTA()`. Must be light-weight: store `entry.version`, `entry.length`,
-and `entry.sha256` for later use. Do not start heavy I/O here (bus negotiation,
-partition erase, etc.) — defer that to the first `Write()` call.
+**`Init(entry)`** — store `entry.version`, `entry.length`, and `entry.sha256`.
+No heavy I/O; defer to first `Write()`.
 
-**`IsReadyForOTA()` → `DeviceReadinessState`** — called immediately after
-`Init()`, with no parameters. The sub-processor uses the version stored during
-`Init()` to decide:
+**`IsReadyForOTA()`** — decide based on the component's current state:
 
-| Node state                                                          | Return value       | Effect                                                                   |
-| ------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------ |
-| Component reachable, installed version ≠ stored `entry.version`    | `kReady`           | Dispatcher calls `Write()` per chunk.                                    |
-| Component installed version == stored `entry.version`               | `kAlreadyUpToDate` | Dispatcher skips. Counts as verified at confirmation — no update needed. |
-| Component busy (initializing, running a critical task)              | `kNotReady`        | Dispatcher skips. Blocks `softwareVersion` confirmation this cycle.      |
-| Component unreachable or not responding                             | `kNotReady`        | Dispatcher skips. Blocks confirmation. Application should log.           |
-| Component in error state requiring manual recovery                  | `kNotReady`        | Dispatcher skips. Blocks confirmation. Update would be unsafe.           |
+| Component state                                        | Return value       | Effect                                                              |
+| ------------------------------------------------------ | ------------------ | ------------------------------------------------------------------- |
+| Reachable, installed version ≠ `entry.version`         | `kReady`           | Dispatcher delivers chunks via `Write()`.                           |
+| Installed version == `entry.version`                   | `kAlreadyUpToDate` | Skipped. Counts as verified — no update needed.                     |
+| Busy (initialising, running a critical task)           | `kNotReady`        | Skipped. Blocks `softwareVersion` confirmation this cycle.          |
+| Unreachable or not responding                          | `kNotReady`        | Skipped. Blocks confirmation. Log the reason.                       |
+| Error state requiring manual recovery                  | `kNotReady`        | Skipped. Blocks confirmation. Update would be unsafe.               |
 
-Rules:
-- Must return in **milliseconds**. No blocking I/O. Any slow initialization
-  (bus negotiation, boot-mode handshake) must happen before the OTA session
-  begins.
-- The return value is permanent for this OTA cycle. There is no retry within
-  the session.
-- The sub-processor must log the specific reason so that skips are observable
-  and diagnosable.
-- Default returns `kReady`. Override whenever readiness depends on runtime state.
+Must return in milliseconds. The return value is permanent for this OTA cycle.
+Log the specific reason so skips are observable and diagnosable.
 
-**Write method** — called per chunk. The Dispatcher guarantees:
-- Chunks arrive sequentially from byte 0 of the binary's data.
-- Exactly `entry.length` bytes are delivered in total across all calls.
-- Chunks contain raw binary bytes only — no headers or framing.
+**Write method** — the Dispatcher guarantees chunks arrive sequentially from
+byte 0, with exactly `entry.length` bytes total, containing raw binary only
+(no headers). The buffer remains valid until `FetchNextData()` or
+`OnWriteComplete()` fires. Detect the last chunk by comparing running byte total
+against `entry.length`. SHA-256 verification, commit, and bus-transfer
+completion must happen on the last chunk. See §10.3 for async write pattern.
 
-The sub-processor detects its last chunk by comparing its running byte total
-against `entry.length` (set in `Init()`). SHA-256 verification, commit, and
-bus-transfer completion must happen on the last chunk. What the application does
-with the bytes is entirely its own responsibility.
+**`Confirm(expectedVersion)`** — called by the framework post-reboot with the
+persisted expected version. No prior `Init()` call is made. The sub-processor
+queries the component's current installed version and compares it against
+`expectedVersion`:
 
-**`Confirm()`** — called during `ConfirmCurrentImage()` on every sub-processor
-that had `Init()` called. The framework re-calls `Init(entry)` with the persisted
-`SubImageHeader` before calling `Confirm()`, so `entry.version` and other fields
-stored in `Init()` are available (§5.1).
+| Component state at `Confirm()` time | Action |
+| ------------------------------------ | ------ |
+| Installed version == `expectedVersion` | Return success. |
+| Component unreachable / unavailable | One-time opportunistic check; return error if still unreachable. |
+| Installed version ≠ `expectedVersion` | Return error (update failed or was skipped). |
 
-| Sub-processor state at download time | Expected action in `Confirm()`                              |
-| ------------------------------------- | ------------------------------------------------------------ |
-| `kReady`                              | Verify the component is now running `entry.version`. Return error if not. |
-| `kNotReady`                           | Re-check whether the component is now at `entry.version` (post-reboot attempt). Return error if not. |
-| `kAlreadyUpToDate`                    | Return success immediately — no update was needed.           |
-
-Any failure withholds `softwareVersion` confirmation and triggers a rollback
-reboot. The retry hook (§5.2) is invoked before that reboot.
-
-**`Abort(context)`** — called on every sub-processor that had `Init()` called
-whenever the OTA session ends without completing normally. The `AbortContext`
-struct (defined in §4.1) carries the reason (`kError` or `kCancelled`) and, for
-errors, the platform error code. The sub-processor must:
-
-- Discard any partially written data.
-- Release all resources acquired since `Init()` (partition handles, bus locks,
-  DMA descriptors, etc.).
-- Not block.
-
-If the write target is an external component (co-processor, peripheral) and the
-write is not reversible (e.g., the co-processor was already flashed before
-`Abort()` is called), the sub-processor must record the inconsistency. The
-boot-time consistency check (§10.6) is the recovery path for this case.
+**`Abort(context)`** — discard partial writes, cancel any pending async
+operation, release all resources acquired since `Init()`. If the write target
+was already flashed before `Abort()` arrives, record the inconsistency for the
+boot-time consistency check (§10.6). Must not block.
 
 ### 10.3 Non-blocking writes
 
@@ -793,11 +901,22 @@ The Dispatcher and Matter thread cannot stall waiting for slow bus
 acknowledgments. If the write operation (UART, SPI, I²C, etc.) takes more than a
 few milliseconds per chunk:
 
-1. Copy the chunk to a local buffer or DMA descriptor.
-2. Return from the write method immediately.
-3. Schedule the actual bus transfer to a worker task.
-4. When the transfer completes, signal the Main Image Processor to resume
-   fetching the next block from BDX.
+1. The chunk arrives in an owned buffer managed by the Main Image Processor.
+   This buffer is guaranteed to remain valid for the lifetime of the async
+   operation — the BDX layer will not request the next block until
+   `OnWriteComplete()` is called.
+2. Copy the relevant bytes to a local DMA descriptor or bus transfer buffer.
+3. Return `kPending` from `Write()` immediately.
+4. Schedule the actual bus transfer to a worker task.
+5. When the transfer completes, call `OnWriteComplete(result)` on the Main Image
+   Processor handle. This is the only way to resume BDX block fetching after a
+   `kPending` return. Do not call `FetchNextData()` directly from the
+   sub-processor.
+
+Sub-processors whose writes complete synchronously (e.g. writing to a local
+partition, which may internally use platform scheduling but resolves before
+returning) return `kDone` from `Write()`. The Dispatcher calls `FetchNextData()`
+immediately after. These sub-processors do not use `OnWriteComplete()`.
 
 This pattern applies to any slow transport and keeps the Matter thread
 responsive.
@@ -912,20 +1031,41 @@ using stub sub-processors. Tests should cover:
 -   Block split across two binaries: last bytes of binary A and first bytes of
     binary B arrive in the same block.
 -   `IsReadyForOTA()` returning `kNotReady`: verify `Init()` is called once,
-    `SkipData()` is called with `entry.length`, `Write()` is never called, and
-    the entry is recorded as `kNotReady` in the readiness map.
+    `SkipData()` is called with the correct relative skip distance (not blindly
+    `entry.length` — must account for `currentBytePosition`), `Write()` is never
+    called, and `FetchNextData()` is **not** called after `SkipData()`.
 -   `IsReadyForOTA()` returning `kAlreadyUpToDate`: verify `Init()` is called
-    once, `SkipData()` is called with `entry.length`, `Write()` is never called,
-    and the entry is recorded as `kAlreadyUpToDate` (counts as verified).
+    once, `SkipData()` is called with the correct relative skip distance,
+    `Write()` is never called, and `FetchNextData()` is **not** called after
+    `SkipData()`.
 -   No registered processor for an image ID: verify `SkipData()` is called with
-    `entry.length`, the entry is recorded as `kAlreadyUpToDate` (not `kNotReady`),
-    and confirmation is **not** blocked.
+    the correct skip distance, the entry is recorded as `kAlreadyUpToDate` (not
+    `kNotReady`), and confirmation is **not** blocked.
 -   `Init()` receives the correct `SubImageHeader` fields before the first
     `Write()` call.
 -   SHA-256 digest mismatch on the last chunk: verify the sub-processor rejects
     the update and `Finalize()` returns an error.
 -   `Apply()` failure: verify the device does not reboot and stays on the old
     firmware.
+-   `Write()` returns `kDone`: verify `FetchNextData()` is called immediately
+    after, before processing any further entries.
+-   `Write()` returns `kDone` on the last chunk of the last entry
+    (`currentBytePosition + entry.length == payloadSize`): verify
+    `FetchNextData()` is **not** called — sending a `BlockQuery` into an EOF
+    session would corrupt the BDX state machine.
+-   `Write()` returns `kPending`: verify `FetchNextData()` is **not** called
+    until `OnWriteComplete(success)` fires from the worker task; verify the
+    owned block buffer remains valid throughout.
+-   `Write()` returns `kPending`, then `OnWriteComplete(error)`: verify
+    `mLastError` is set, `FetchNextData()` is never called, and `Abort()` is
+    invoked on all sub-processors with `reason = kError`.
+-   Bundle with `entry.offset` that does not match `currentBytePosition`:
+    verify the session is aborted immediately with a format error.
+-   `entry.length = 0`: verify the entry is rejected at parse time.
+-   `currentBytePosition` tracking across a split block: verify that when a
+    block spans two entries, the skip distance for entry[i+1] equals
+    `entry[i+1].length` minus the bytes of entry[i+1] already consumed from
+    the current block.
 
 **Confirmation policy tests** — these are the most critical class:
 
@@ -934,13 +1074,16 @@ using stub sub-processors. Tests should cover:
 -   All sub-processors return `kAlreadyUpToDate` →
     `ConfirmCurrentImage()` succeeds (every entry counts as verified).
 -   One sub-processor returns `kNotReady`, all others `kReady` →
-    `ConfirmCurrentImage()` returns error; platform rollback is triggered;
-    `softwareVersion` is **not** confirmed.
+    `ConfirmCurrentImage()` returns error; the SDK clears `kApplying` state
+    but does **not** trigger a reboot; the device continues running on
+    unconfirmed firmware; `softwareVersion` is **not** confirmed; rollback
+    occurs passively on the next reboot; `OnPendingNodeUpdates` is invoked.
 -   Mix of `kReady` + `kAlreadyUpToDate` with no `kNotReady` →
     `ConfirmCurrentImage()` succeeds.
--   `kNotReady` entry recorded during download; on the next boot the same entry
-    is now resolvable → verify confirmation re-evaluates the saved readiness map
-    (persisted across reboot) and succeeds only when all entries are verified.
+-   `kNotReady` entry recorded during download; on the next boot the component
+    has recovered → verify `ConfirmCurrentImage()` calls `Confirm(expectedVersion)`
+    using the persisted `{imageId, version}` record, the component now reports
+    the correct version, and confirmation succeeds.
 
 **Retry policy tests:**
 
@@ -985,10 +1128,13 @@ previously running firmware after the failure.
    Whether a zero-image bundle should be rejected at parse time or silently
    allowed is unresolved. A future revision should make this explicit.
 
-3. **`numImages` upper bound.** No maximum is defined. A bundle with 255 entries
-   would require 8 + 255 × 48 = 12,248 bytes of NVS storage for persisted
-   headers alone. Devices with constrained NVS should define a platform-specific
-   limit and reject bundles that exceed it.
+3. **`numImages` upper bound.** No maximum is defined. The NVS footprint for
+   persisted `{imageId, version}` records is 8 bytes × `numImages` — 2,040
+   bytes for 255 entries — which is manageable. However, the in-memory buffer
+   required to accumulate the `MultiImageHeader` during parsing is
+   `8 + numImages × 48` bytes (up to ~12 KB for 255 entries). Devices with
+   constrained RAM should define a platform-specific limit and reject bundles
+   that exceed it.
 
 4. **Delta / compressed binaries.** All binaries are assumed to be raw flat
    images. Delta encoding or compression would reduce transfer size but requires

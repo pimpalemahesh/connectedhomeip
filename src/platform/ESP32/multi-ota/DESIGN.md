@@ -27,11 +27,11 @@ without any changes to the OTA Requestor, Provider protocol, or BDX layer.
 
 | Term                    | Definition                                                                                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bundle**              | A single `.ota` file containing the `MultiImageHeader`, one `SubImageHeader` per component, and all component binaries concatenated.                |
+| **Bundle**              | A single `.ota` file containing a `MultiImageHeader` (which embeds one `SubImageHeader` per component in its `subImages[]` field) followed by all component binaries concatenated. |
 | **Main Image Processor**| The OTA image processor implementation the Matter OTA Requestor calls. Owns the full download lifecycle and contains the Dispatcher.                |
 | **Dispatcher**          | The routing engine inside the Main Image Processor. Parses the bundle header, maintains the `imageId → sub-processor` map, and routes or skips each component's bytes. |
-| **Sub Image Processor** | An application-provided handler for one component. Implements `Init(entry)`, `IsReadyForOTA()`, and `Write()`.                                     |
-| **Image ID**            | A 1-byte unsigned integer (0–255) that identifies which sub-processor handles a given component. Stable ABI between firmware and packaging tool.    |
+| **Sub Image Processor** | An application-provided handler for one component. Implements `Init(entry)`, `IsReadyForOTA()`, `Write()`, `Confirm()`, and `Abort(context)`.      |
+| **Image ID**            | A 4-byte unsigned integer (uint32, `0x00000000`–`0xFFFFFFFF`) that identifies which sub-processor handles a given component. Stable ABI between firmware and packaging tool. |
 | **`SkipData(n)`**       | BDX `BlockQueryWithSkip` — tells the Provider to advance its cursor by `n` bytes without delivering them.                                          |
 | **Confirmation**        | The platform action that marks newly booted firmware as valid and cancels any pending rollback. Triggered by `ConfirmCurrentImage()`.               |
 | **`softwareVersion`**   | The Matter bundle version in the outer OTA header. Represents the state where every component in the bundle is at its expected version.             |
@@ -42,10 +42,12 @@ without any changes to the OTA Requestor, Provider protocol, or BDX layer.
 
 The Matter OTA file header (vendor id, product id, software version, payload
 size, …) is unchanged. The **payload** now begins with a `MultiImageHeader` that
-describes every binary inside the bundle, followed by the binary data blobs at
-the offsets the header specifies. The dispatcher parses the `MultiImageHeader`
-first, then routes each binary's bytes to the correct processor — using
-`SkipData()` for any binary whose processor is absent (assumed up to date) or not ready.
+describes every binary inside the bundle — including an embedded `subImages[]`
+array of `SubImageHeader` entries — followed by the binary data blobs at the
+offsets the header specifies. The dispatcher parses the full `MultiImageHeader`
+(fixed fields then `subImages[]`) first, then routes each binary's bytes to the
+correct processor — using `SkipData()` for any binary whose processor is absent
+(assumed up to date) or not ready.
 
 ### 3.1 Outer layout
 
@@ -54,17 +56,16 @@ first, then routes each binary's bytes to the correct processor — using
 | Matter OTA header (chip-ota-image-tool format)          |
 |   vendor_id, product_id, software_version, ...          |
 +---------------------------------------------------------+  ← offset 0 of payload
-| MultiImageHeader  (8 bytes)                             |
+| MultiImageHeader                                        |
 |   magic(4)  num_images(1)  reserved(3)                  |
+|   subImages[0]   : SubImageHeader  (48 bytes)           |
+|   subImages[1]   : SubImageHeader  (48 bytes)           |
+|   ...                                                   |
+|   subImages[N-1] : SubImageHeader  (48 bytes)           |
 +---------------------------------------------------------+
-| SubImageHeader[0]  (48 bytes)                           |
-| SubImageHeader[1]  (48 bytes)                           |
-| ...                                                     |
-| SubImageHeader[N-1]  (48 bytes)                         |
+| Binary 0 data   (at subImages[0].offset bytes)          |
 +---------------------------------------------------------+
-| Binary 0 data   (at SubImageHeader[0].offset bytes)     |
-+---------------------------------------------------------+
-| Binary 1 data   (at SubImageHeader[1].offset bytes)     |
+| Binary 1 data   (at subImages[1].offset bytes)          |
 +---------------------------------------------------------+
 | ...                                                     |
 +---------------------------------------------------------+
@@ -76,38 +77,50 @@ immediately after the outer Matter OTA header ends). All multi-byte fields are
 
 ### 3.2 MultiImageHeader
 
-The `MultiImageHeader` is always 8 bytes at the start of the payload. All
-fields are little-endian:
+`MultiImageHeader` is the single header structure at the start of the payload.
+It contains a fixed-size preamble followed by a variable-length array of
+`SubImageHeader` entries (`subImages[]`). All fields are little-endian:
 
-| Offset | Size | Field       | Semantics                                           |
-| ------ | ---- | ----------- | --------------------------------------------------- |
+**Fixed preamble (8 bytes):**
+
+| Offset | Size | Field       | Semantics                                            |
+| ------ | ---- | ----------- | ---------------------------------------------------- |
 | 0      | 4    | `magic`     | Must equal `0x4D494F54` ("MIOT") — bundle identifier |
-| 4      | 1    | `numImages` | Number of `SubImageHeader` entries (0–255)          |
-| 5      | 3    | `reserved`  | Must be zero; reserved for future extensions        |
+| 4      | 1    | `numImages` | Number of entries in `subImages[]` (0–255)           |
+| 5      | 3    | `reserved`  | Must be zero; reserved for future extensions         |
 
-Total header size on the wire:
+**Variable-length field:**
+
+| Offset | Size              | Field        | Semantics                                    |
+| ------ | ----------------- | ------------ | -------------------------------------------- |
+| 8      | `numImages × 48`  | `subImages[]`| Array of `SubImageHeader` entries; see §3.3  |
+
+Total `MultiImageHeader` size on the wire:
 
 ```
-headerBytes = sizeof(MultiImageHeader) + numImages * sizeof(SubImageHeader)
-             = 8 + numImages * 48
+sizeof(MultiImageHeader) = 8 + numImages * sizeof(SubImageHeader)
+                         = 8 + numImages * 48
 ```
 
-The dispatcher accumulates exactly `headerBytes` before it switches from
-header-parsing mode to data-routing mode.
+The dispatcher accumulates exactly `sizeof(MultiImageHeader)` bytes before it
+switches from header-parsing mode to data-routing mode. Because `numImages` is
+not known until the first 8 bytes are read, parsing proceeds in two steps:
+1. Accumulate the 8-byte preamble; read `magic` and `numImages`.
+2. Accumulate the remaining `numImages × 48` bytes to populate `subImages[]`.
 
-### 3.3 Per-image header
+### 3.3 SubImageHeader (element of `MultiImageHeader.subImages[]`)
 
-Each `SubImageHeader` is a fixed 48 bytes regardless of the binary it describes.
-All fields are little-endian:
+Each entry in `MultiImageHeader.subImages[]` is a `SubImageHeader` — a fixed
+48-byte structure regardless of the binary it describes. All fields are
+little-endian:
 
-| Offset | Size | Field      | Semantics                                                      |
-| ------ | ---- | ---------- | -------------------------------------------------------------- |
-| 0      | 1    | `imageId`  | Identifies which sub-processor handles this binary (§3.4)      |
-| 1      | 4    | `version`  | Expected installed version of this binary                      |
-| 5      | 4    | `offset`   | Byte offset of binary data from payload start                  |
-| 9      | 4    | `length`   | Exact byte count of the binary                                 |
-| 13     | 32   | `sha256`   | SHA-256 digest of the binary — mandatory                       |
-| 45     | 3    | `reserved` | Must be zero; reserved for future extensions                   |
+| Offset | Size | Field     | Semantics                                                      |
+| ------ | ---- | --------- | -------------------------------------------------------------- |
+| 0      | 4    | `imageId` | Identifies which sub-processor handles this binary (§3.4)      |
+| 4      | 4    | `version` | Expected installed version of this binary                      |
+| 8      | 4    | `offset`  | Byte offset of binary data from payload start                  |
+| 12     | 4    | `length`  | Exact byte count of the binary                                 |
+| 16     | 32   | `sha256`  | SHA-256 digest of the binary — mandatory                      |
 
 Field semantics:
 
@@ -117,29 +130,26 @@ Field semantics:
 | `version`  | Per-binary version number. Informational and for sanity checks only; the OTA Requestor's update decision is driven by the outer Matter `softwareVersion` alone.             |
 | `offset`   | Absolute byte offset from payload start. Enables the dispatcher to jump directly to each binary with a single `SkipData()` call rather than streaming all preceding bytes. |
 | `length`   | Exact byte count. Used both to know when to stop feeding the processor and to compute the skip distance for unneeded binaries.                                              |
-| `sha256`   | Mandatory SHA-256 of the binary at `[offset, offset+length)`. The sub-processor must verify this digest before accepting the update as complete.                            |
-| `reserved` | Must be zero on write. Readers must ignore. Enables future field additions without a `version` bump.                                                                        |
+| `sha256`  | Mandatory SHA-256 of the binary at `[offset, offset+length)`. The sub-processor must verify this digest before accepting the update as complete. |
 
 ### 3.4 Image ID space
 
-`imageId` is a 1-byte field (values 0–255). 256 slots are sufficient for any
-realistic multi-image bundle. The namespace is partitioned to avoid collisions:
+`imageId` is a 4-byte unsigned integer (uint32, values `0x00000000`–`0xFFFFFFFF`).
+The namespace is partitioned to avoid collisions:
 
-| Range        | Owner        | Use                                                                                                                            |
-| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `0`          | —            | Invalid. Rejected at parse time.                                                                                               |
-| `1 .. 15`    | Platform     | Reserved for platform-defined well-known images. Specific assignments are an implementation detail and not fixed by this spec. |
-| `16 .. 127`  | Reserved     | Held for future framework growth. Must not be used by applications.                                                            |
-| `128 .. 255` | Manufacturer | **Manufacturer-defined.** Pick any value in this range; no central registry.                                                   |
+| Range                        | Owner        | Use                                                                                                                                    |
+| ---------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `0x00000000`                 | —            | Invalid. Rejected at parse time.                                                                                                       |
+| `0x00000001 .. 0x000000FF`   | Platform     | Reserved for platform-defined well-known images. Specific assignments are an implementation detail and not fixed by this spec.         |
+| `0x00000100 .. 0xFFFFFFFF`   | Manufacturer | **Manufacturer-defined.** Pick any value in this range; no central registry.                                                           |
 
-The specific well-known IDs within range `1–15` (e.g. which value means
-"application firmware", etc) are determined by the
-implementation and documented alongside the processor registration code. This
-spec does not assign them.
+The specific well-known IDs within range `0x01`–`0xFF` (e.g. which value means
+"application firmware", etc.) are determined by the implementation and documented
+alongside the processor registration code. This spec does not assign them.
 
-Manufacturer-defined IDs in range `128–255` carry no inherent meaning beyond
-what the device firmware and packaging tool agree on. There is no list to add to
-and no central authority.
+Manufacturer-defined IDs in range `0x00000100`–`0xFFFFFFFF` carry no inherent
+meaning beyond what the device firmware and packaging tool agree on. There is no
+list to add to and no central authority.
 
 The only runtime validation is **duplicate registration** —
 `RegisterProcessor(imageId, ...)` fails if `imageId` is already registered. The
@@ -155,7 +165,7 @@ version, and file path — and produces a single `.ota` file. The tool:
 1. Reads each binary and computes its SHA-256 digest.
 2. Computes each binary's `offset` (header section size + sum of preceding
    binary sizes).
-3. Builds the `MultiImageHeader` + `SubImageHeader[]` header blob.
+3. Builds the `MultiImageHeader` (preamble + `subImages[]`).
 4. Concatenates the header blob and binaries, then wraps the result with the
    standard outer Matter OTA header (vendor ID, product ID, software version,
    digest).
@@ -179,16 +189,16 @@ drives the overall prepare → process → finalize → apply → abort lifecycl
 contains the Dispatcher.
 
 **Dispatcher** — the routing engine inside the Main Image Processor. It parses
-the `MultiImageHeader` and `SubImageHeader[]` from the incoming byte stream,
-maintains the `imageId → sub-processor` map populated by application
+the `MultiImageHeader` (preamble then `subImages[]`) from the incoming byte
+stream, maintains the `imageId → sub-processor` map populated by application
 registration, and redirects each byte chunk to the sub-processor that matches
-the current `SubImageHeader.imageId`. When no sub-processor is registered for an
+the current `subImages[i].imageId`. When no sub-processor is registered for an
 entry, the Dispatcher treats it as `kAlreadyUpToDate` (assumed up to date) and
 calls `SkipData()` to advance past it. When the matched sub-processor returns
 not-ready, `SkipData()` is also called but the entry blocks confirmation.
 
 **Sub Image Processor** — an interface the application registers per image ID.
-Three methods form the contract:
+Five methods form the contract:
 
 -   `Init(entry)` — called once with the full `SubImageHeader` for each entry,
     before `IsReadyForOTA()`. Must be light-weight: store the fields needed for
@@ -206,8 +216,27 @@ Three methods form the contract:
     (e.g. `esp_ota_begin`). The sub-processor knows it has received the last
     chunk when its running byte total reaches `entry.length` (stored in
     `Init()`).
+-   `Confirm()` — called on every sub-processor that had `Init()` called, during
+    `ConfirmCurrentImage()` (§5.1). For `kReady` sub-processors: verify the
+    component is now running `entry.version`. For `kNotReady` sub-processors:
+    re-check whether the component is now at its expected version (the post-reboot
+    attempt). Returns an error if the check fails; any failure withholds
+    `softwareVersion` confirmation. `kAlreadyUpToDate` sub-processors may return
+    success immediately.
+-   `Abort(context)` — called on every sub-processor that had `Init()` called
+    whenever the OTA session ends without completing normally — whether due to an
+    error or a deliberate cancellation. `AbortContext` carries two fields:
 
-`OTAReadiness` is a three-value enum — not a boolean — because the
+    | Field    | Values                | Meaning                                                        |
+    | -------- | --------------------- | -------------------------------------------------------------- |
+    | `reason` | `kError`, `kCancelled`| `kError`: session ended due to a failure; `kCancelled`: deliberate abort by the application |
+    | `error`  | platform error code   | The specific error that caused the abort; unset when `reason` is `kCancelled` |
+
+    The sub-processor may use `context.reason` to log or handle the two cases
+    differently. It must discard any partially written data and release all
+    resources acquired since `Init()`. Must not block.
+
+`DeviceReadinessState` is a three-value enum — not a boolean — because the
 confirmation policy (§12.1) requires distinguishing "already up to date" from
 "unavailable":
 
@@ -216,287 +245,6 @@ confirmation policy (§12.1) requires distinguishing "already up to date" from
 | `kReady`           | Call `Write()` per chunk               | Yes                                             |
 | `kAlreadyUpToDate` | `SkipData(entry.length)`               | Yes — already at target version                 |
 | `kNotReady`        | `SkipData(entry.length)`               | **No** — blocks `softwareVersion` confirmation  |
-
-The sub-processor owns all state tracking for its component. The framework
-defines the interface; applications provide the implementations.
-
-### 4.2 Component relationships
-
-```
-   Matter OTA Requestor
-          |
-          | OTA Image Processor Interface
-          v
-  +-------+------------------------------------------+
-  |              Main Image Processor                 |
-  |   records OTAReadiness per entry                  |
-  |   blocks confirmation if any = kNotReady          |
-  |   +-------------------------------------------+  |
-  |   |              Dispatcher                   |  |
-  |   |   MultiImageHeader + SubImageHeader[]     |  |
-  |   |   imageId → sub-processor map             |  |
-  |   |   routes chunks / calls SkipData()        |  |
-  |   +--------+----------------------------------+  |
-  +------------+-------------------------------------+
-               |
-               | Init(SubImageHeader) — always, light
-               | IsReadyForOTA() → DeviceReadinessState
-               | Write(block) per chunk — only when kReady
-               v
-  +------------+-------------------------------------+
-  |      Sub Image Processor (interface)             |
-  |   Init(SubImageHeader &)            (app-impl)  |
-  |   IsReadyForOTA()                   (app-impl)  |
-  |   Write(block)      → result        (app-impl)  |
-  +--------------------------------------------------+
-               ^                   ^
-               |                   |
-       [App firmware]     [Co-processor / any]
-       (registered by     (registered by
-        platform layer)    application)
-```
-
-**Main Image Processor** receives every BDX block. Before any data arrives it
-triggers the Dispatcher to begin header accumulation. Once the full header
-section is parsed the Dispatcher switches to routing mode. It records the
-`OTAReadiness` result for each entry and uses it in `ConfirmCurrentImage()`
-(§5.5, §12.1).
-
-**Dispatcher** — for each entry: looks up the sub-processor by `imageId`. If
-no processor is registered, treats it as `kAlreadyUpToDate` (assumed up to
-date). Otherwise calls `Init(entry)` (light) then `IsReadyForOTA()` (no params).
-If `kReady`, feeds chunks via `Write()`. If `kAlreadyUpToDate` or `kNotReady`,
-calls `SkipData(entry.length)`. Advances when `entry.length` bytes are accounted
-for.
-
-**Sub Image Processor** — `Init()` is called first (light: stores entry fields).
-`IsReadyForOTA()` uses the stored version to decide readiness. On the first
-`Write()` the sub-processor performs heavy initialisation. It detects its last
-chunk when its running byte count reaches `entry.length`.
-
-**Registration** — applications call a register function before the OTA session
-starts, associating an `imageId` with a sub-processor instance. Each `imageId`
-may have at most one registered processor; duplicate registration is an error.
-
----
-
-## 5. End-to-End Flow
-
-### 5.1 Provider → device transfer
-
-1. Provider announces availability; Requestor on device QueryImage's, discovers
-   a higher version, and starts BDX.
-2. BDX calls into the Main Image Processor via the standard OTA image processor
-   interface. This is identical to the single-image flow from the Requestor's
-   perspective — the multi-image logic is entirely inside the Main Image
-   Processor.
-
-### 5.2 Per-block dispatch
-
-Processing has two phases gated by whether the full header section has been
-accumulated.
-
-```
-# Persistent state across blocks:
-#   headerParsed        : bool   — false until full header section is accumulated
-#   headerAccumulator   : buffer — accumulates header bytes across blocks
-#   accumulated         : integer — bytes in headerAccumulator so far
-#   headerNeeded        : integer — total header bytes required; starts as
-#                                   sizeof(MultiImageHeader), updated once numImages known
-#   numImages           : integer — number of SubImageHeader entries
-#   subImages[]         : parsed SubImageHeader entries
-#   currentIndex        : integer — index of entry being processed
-#   entryStarted        : bool    — Init() has been called for currentIndex
-#   bytesDelivered      : integer — bytes delivered to current sub-processor
-#   currentStreamOffset : integer — payload cursor (bytes from payload start)
-
-OnBlockReceived(block):
-    strip outer Matter OTA header bytes if not yet consumed
-    err = ProcessPayload(block)
-    if err != OK:
-        EndDownload(err)   # aborts BDX session; triggers Abort() on image processor
-
-ProcessPayload(block) → error:
-
-    # ── Phase 1: header accumulation ────────────────────────────────────
-    if not headerParsed:
-
-        toConsume = min(headerNeeded - accumulated, block.size())
-        append block[0 .. toConsume] to headerAccumulator
-        accumulated += toConsume
-        block = block[toConsume ..]          # trim consumed bytes from block
-
-        if accumulated < sizeof(MultiImageHeader):
-            FetchNextData()
-            return OK
-
-        if headerNeeded == sizeof(MultiImageHeader):
-            # MultiImageHeader is complete — parse it to learn numImages
-            verify magic; return error if magic is wrong
-            if numImages == 0:
-                headerParsed        = true
-                currentStreamOffset = accumulated
-                FetchNextData()
-                return OK
-            headerNeeded = sizeof(MultiImageHeader) + numImages * sizeof(SubImageHeader)
-            # consume any SubImageHeader bytes already in hand
-            toConsume = min(headerNeeded - accumulated, block.size())
-            append block[0 .. toConsume] to headerAccumulator
-            accumulated += toConsume
-            block = block[toConsume ..]
-
-        if accumulated < headerNeeded:
-            FetchNextData()
-            return OK
-
-        parse all SubImageHeader entries from headerAccumulator into subImages[]
-        headerParsed        = true
-        currentIndex        = 0
-        entryStarted        = false
-        bytesDelivered      = 0
-        currentStreamOffset = headerNeeded   # payload cursor starts right after headers
-        # block now contains any remaining payload bytes — fall through
-
-    # ── Phase 2: data routing ────────────────────────────────────────────
-    while currentIndex < numImages and not block.empty():
-        entry = subImages[currentIndex]
-
-        if not entryStarted:
-            # skip any alignment padding between currentStreamOffset and entry.offset
-            gap = entry.offset - currentStreamOffset
-            if gap > 0:
-                currentStreamOffset += gap   # advance cursor over gap
-                SkipData(gap)                # BlockQueryWithSkip — also the next-block request
-                return OK                   # next block arrives starting at entry.offset
-
-            processor = processorMap.Find(entry.imageId)
-            # No registered processor → assumed already up to date; does not block confirmation
-            if processor != null:
-                processor.Init(entry)            # light: store SubImageHeader for readiness check
-                readiness = processor.IsReadyForOTA()   # no params; uses stored version
-            else:
-                readiness = kAlreadyUpToDate
-            recordReadiness(entry.imageId, readiness)  # stored for ConfirmCurrentImage
-
-            if readiness != kReady:
-                currentStreamOffset += entry.length  # advance cursor over skipped entry
-                SkipData(entry.length)               # BlockQueryWithSkip
-                currentIndex++
-                entryStarted   = false
-                bytesDelivered = 0
-                return OK                            # SkipData is the next-block request
-
-            entryStarted = true
-
-        # feed bytes to sub-processor
-        toDeliver = min(entry.length - bytesDelivered, block.size())
-        err = processor.Write(block[0 .. toDeliver])
-        if err != OK:
-            return err               # propagated as ProcessBlock() error; BDX aborted
-
-        bytesDelivered      += toDeliver
-        currentStreamOffset += toDeliver   # keep cursor in sync with delivered bytes
-        block = block[toDeliver ..]        # consume delivered bytes from block
-
-        if bytesDelivered == entry.length:
-            # entry complete — Dispatcher advances, not the sub-processor
-            currentIndex++
-            entryStarted   = false
-            bytesDelivered = 0
-            continue   # remaining block bytes may belong to next entry
-
-    FetchNextData()   # block exhausted — request next block from Provider
-    return OK
-```
-
-**Key properties:**
-- `currentStreamOffset` is the single source of truth for the payload cursor. It
-  is initialised to `headerNeeded` when the header is parsed and incremented on
-  every byte consumed — whether delivered via `Write()`, skipped via `SkipData()`,
-  or jumped over as an alignment gap.
-- `SkipData()` issues a BDX `BlockQueryWithSkip` message, which is also the
-  next-block request. After calling `SkipData()` the function must return
-  immediately — calling `FetchNextData()` as well would issue a second request.
-- `FetchNextData()` must be called explicitly at the end of every normal block
-  (when the while loop exits because the block is empty). Without it the BDX
-  session stalls.
-- `Write()` errors propagate as the return value of `ProcessBlock()`. The BDX
-  layer checks this return and calls `Abort()` + ends the session.
-- The Dispatcher owns the byte counter (`bytesDelivered`) and advances entries.
-  The sub-processor does not signal completion.
-- `OTAReadiness` is recorded per entry at `IsReadyForOTA()` time and used
-  later at `ConfirmCurrentImage()`.
-- `Init(entry)` is always called (light: stores entry) before `IsReadyForOTA()`.
-  If `IsReadyForOTA()` returns `kReady`, the sub-processor uses the stored fields
-  on the first `Write()` call to perform heavy initialisation.
-
-### 5.3 Finalize → Apply → Reboot
-
-After BDX delivers all bytes, the OTA Requestor calls `Finalize()` then
-`Apply()` on the Main Image Processor:
-
-**`Finalize()`** — called when the byte stream is complete. The Main Image
-Processor performs any platform-level verification needed before committing
-(e.g., integrity checks, confirming all selected entries received their full
-byte count). Sub-processors have already received all their bytes via `Write()`
-during the download; no additional callback is issued to them at this point.
-
-**`Apply()`** — commits the update at the platform level and schedules a reboot.
-For the primary application image this means making the newly written firmware
-the active boot target. If `Apply()` fails the device must not reboot; it stays
-on the currently running firmware.
-
-After a successful `Apply()`, a brief delay allows active connections to be torn
-down cleanly before the device restarts.
-
-**What sub-processors do at apply time** is determined by the application. If a
-co-processor or peripheral requires an explicit "commit" or "activate" command
-after all bytes are delivered, that logic belongs in the application's `Write()`
-implementation (e.g., on the last chunk) or in a separate application-level hook
-invoked after `Apply()`. The framework does not define a commit lifecycle on the
-sub-processor interface.
-
-### 5.4 Boot validation and `softwareVersion` confirmation
-
-1. On the next boot the platform starts the newly committed firmware. If the
-   firmware fails to start (crash loop, hard fault before confirming), the
-   platform's rollback mechanism restores the previously running firmware.
-2. On the first successful boot of the new firmware, the OTA Requestor calls
-   `IsFirstImageRun()` — returns true. The Requestor then calls
-   `ConfirmCurrentImage()`.
-3. The multi-image `ConfirmCurrentImage()` performs **two checks** before
-   signalling the platform to mark the firmware as confirmed:
-   a. The running `softwareVersion` matches the version the Requestor
-      downloaded.
-   b. Every sub-processor entry recorded as `kNotReady` during the download
-      is now verified to be at its expected version. If any `kNotReady` entry
-      cannot be verified, confirmation is withheld.
-4. If either check fails, `ConfirmCurrentImage()` returns an error. Before
-   triggering the rollback reboot, the Main Image Processor invokes the retry
-   policy hook (§5.7) so the platform can schedule a `QueryImage` re-trigger
-   for immediately after the rollback completes. The device reverts to the old
-   `softwareVersion` and the OTA window reopens.
-
-This extends the single-image confirmation flow with step 3b. The Main Image
-Processor retains the per-entry `OTAReadiness` map from the download session
-across the reboot (persisted in NVS or equivalent) so that the post-boot
-check can evaluate it. Once `ConfirmCurrentImage()` succeeds — meaning all
-components are verified and the new `softwareVersion` is committed — the Main
-Image Processor **must erase the NVS readiness map and `attemptCount`**. This
-ensures the next OTA cycle (for `softwareVersion + 1` or any future bundle)
-starts with a clean slate and does not inherit stale `kAlreadyUpToDate` entries
-from the previous cycle.
-
-### 5.5 Processor Readiness and `SkipData`
-
-Before feeding bytes to a sub-processor, the Dispatcher calls `Init(entry)`
-(light: stores the `SubImageHeader`) then `IsReadyForOTA()` (no parameters) on
-it. If `IsReadyForOTA()` returns `kNotReady` or `kAlreadyUpToDate`, the
-Dispatcher calls `SkipData(entry.length)` to tell the Provider to advance its
-cursor past that entire binary. If no processor is registered for that image ID, the entry is
-treated as `kAlreadyUpToDate` — assumed up to date — and also skipped. Those bytes are
-never delivered to the device. The Dispatcher then moves on to the next
-`SubImageHeader` entry.
 
 **Skipped means permanently skipped for this OTA cycle.** The Provider will not
 re-send those bytes. A component whose processor returns `kNotReady` is not
@@ -519,10 +267,129 @@ detecting and handling this (§7.4, §10.6). Do not skip a component unless the
 device can tolerate running the old version of that component alongside new
 versions of the others.
 
-The skip-data operation must be invokable by the Main Image Processor at any
-point during a download. See §9 for the full requirements.
+The sub-processor owns all state tracking for its component. The framework
+defines the interface; applications provide the implementations.
 
-### 5.6 Retry policy for incomplete cycles
+### 4.2 Component relationships
+
+```
+   Matter OTA Requestor
+          |
+          | OTA Image Processor Interface
+          v
+  +-------+------------------------------------------+
+  |              Main Image Processor                 |
+  |   records DeviceReadinessState per entry          |
+  |   blocks confirmation if any = kNotReady          |
+  |   +-------------------------------------------+  |
+  |   |              Dispatcher                   |  |
+  |   |   MultiImageHeader (incl. subImages[])    |  |
+  |   |   imageId → sub-processor map             |  |
+  |   |   routes chunks / calls SkipData()        |  |
+  |   +--------+----------------------------------+  |
+  +------------+-------------------------------------+
+               |
+               | Init(SubImageHeader) — always, light
+               | IsReadyForOTA() → DeviceReadinessState
+               | Write(block) per chunk — only when kReady
+               | Confirm() — post-reboot per-entry check
+               | Abort(AbortContext) — on error or cancel
+               v
+  +------------+-------------------------------------+
+  |      Sub Image Processor (interface)             |
+  |   Init(SubImageHeader)              (app-impl)  |
+  |   IsReadyForOTA()                   (app-impl)  |
+  |   Write(block)      → result        (app-impl)  |
+  |   Confirm()         → result        (app-impl)  |
+  |   Abort(AbortContext)               (app-impl)  |
+  +--------------------------------------------------+
+               ^                   ^
+               |                   |
+       [App firmware]     [Co-processor / any]
+       (registered by     (registered by
+        platform layer)    application)
+```
+
+**Main Image Processor** receives every BDX block. Before any data arrives it
+triggers the Dispatcher to begin `MultiImageHeader` accumulation. Once the full
+`MultiImageHeader` (preamble + `subImages[]`) is parsed the Dispatcher switches
+to routing mode. It records the `DeviceReadinessState` result for each entry and uses it
+in `ConfirmCurrentImage()` (§5.1, §12.1).
+
+**Dispatcher** — for each entry in `multiImageHeader.subImages[]`: looks up the
+sub-processor by `imageId`. If no processor is registered, treats it as
+`kAlreadyUpToDate` (assumed up to date). Otherwise calls `Init(entry)` (light)
+then `IsReadyForOTA()` (no params). If `kReady`, feeds chunks via `Write()`. If
+`kAlreadyUpToDate` or `kNotReady`, calls `SkipData(entry.length)`. Advances when
+`entry.length` bytes are accounted for.
+
+**Sub Image Processor** — `Init()` is called first (light: stores entry fields).
+`IsReadyForOTA()` uses the stored version to decide readiness. On the first
+`Write()` the sub-processor performs heavy initialisation. It detects its last
+chunk when its running byte count reaches `entry.length`.
+
+**Registration** — applications call a register function before the OTA session
+starts, associating an `imageId` with a sub-processor instance. Each `imageId`
+may have at most one registered processor; duplicate registration is an error.
+
+---
+
+## 5. Confirmation and Retry
+
+### 5.1 Boot validation and `softwareVersion` confirmation
+
+1. On the next boot the platform starts the newly committed firmware. If the
+   firmware fails to start (crash loop, hard fault before confirming), the
+   platform's rollback mechanism restores the previously running firmware.
+2. On the first successful boot of the new firmware, the OTA Requestor calls
+   `IsFirstImageRun()` — returns true. The Requestor then calls
+   `ConfirmCurrentImage()`.
+3. The multi-image `ConfirmCurrentImage()` performs **two checks** before
+   signalling the platform to mark the firmware as confirmed:
+   a. The running `softwareVersion` matches the version the Requestor
+      downloaded.
+   b. For each entry that had a registered processor with `Init()` called:
+      - If the processor returned `kReady`: `Confirm()` is called to verify the
+        update was actually applied.
+      - If the processor returned `kNotReady`: `Confirm()` is called as a
+        post-reboot re-check to see if the component is now at its expected
+        version.
+      - If the processor returned `kAlreadyUpToDate`: `Confirm()` is called;
+        the processor should return success immediately since no update was
+        needed.
+      - If no processor was registered for an entry (recorded as
+        `kAlreadyUpToDate` by the Dispatcher): no `Confirm()` call is made;
+        the entry is counted as verified automatically.
+      If any sub-processor's `Confirm()` returns an error, confirmation is
+      withheld.
+4. If either check fails, `ConfirmCurrentImage()` returns an error. Before
+   triggering the rollback reboot, the Main Image Processor invokes the retry
+   policy hook (§5.2) so the platform can schedule a `QueryImage` re-trigger
+   for immediately after the rollback completes. The device reverts to the old
+   `softwareVersion` and the OTA window reopens.
+
+This extends the single-image confirmation flow with step 3b. The Main Image
+Processor persists two things in NVS across the reboot (keyed by the
+`softwareVersion` being applied):
+
+- The per-entry `DeviceReadinessState` map, so that `ConfirmCurrentImage()`
+  knows which processors to call `Confirm()` on and which to skip.
+- The `SubImageHeader` for every entry whose registered processor had `Init()`
+  called. On the next boot, before invoking `Confirm()`, the framework
+  re-calls `Init(entry)` on each sub-processor using the persisted header.
+  This restores `entry.version` (and `entry.sha256`, `entry.length`, etc.)
+  that the sub-processor stored during the download. Sub-processor
+  implementations must not assume that `entry` fields are available in
+  `Confirm()` from the same power cycle as the download.
+
+Once `ConfirmCurrentImage()` succeeds — meaning all components are verified
+and the new `softwareVersion` is committed — the Main Image Processor **must
+erase the NVS readiness map, the persisted `SubImageHeader` entries, and
+`attemptCount`**. This ensures the next OTA cycle (for `softwareVersion + 1`
+or any future bundle) starts with a clean slate and does not inherit stale
+entries from the previous cycle.
+
+### 5.2 Retry policy for incomplete cycles
 
 When a download session finishes with one or more `kNotReady` entries, the
 affected nodes were not updated this cycle. Without intervention the device will
@@ -547,7 +414,11 @@ the `OnPendingNodeUpdates` operation, passing two arguments:
   already verified and do not drive retries.
 - **Attempt count** — the number of times this operation has been invoked for
   the current `softwareVersion`. The Main Image Processor increments this counter
-  and persists it across reboots so that post-rollback retries do not reset it.
+  and persists it in NVS, keyed by `softwareVersion`, so that post-rollback
+  retries do not reset it. When the Main Image Processor begins a new OTA session
+  for a different `softwareVersion`, it erases all NVS entries from the previous
+  version (readiness map, persisted headers, and attempt counter) before
+  proceeding, ensuring no stale state carries over between bundles.
 
 The platform implementation decides what to do:
 
@@ -603,7 +474,7 @@ BDX layer (any thread)
                                               Matter thread
                                                 │
                                                 ├─ strip outer Matter OTA header (once)
-                                                ├─ Phase 1: accumulate MultiImageHeader
+                                                ├─ Phase 1: accumulate MultiImageHeader (preamble + subImages[])
                                                 ├─ Phase 2: Dispatcher routes blocks
                                                 │     ├─ SubImageProcessor.Write()
                                                 │     ├─ SkipData() if not ready
@@ -682,13 +553,13 @@ framework provides **best-effort atomicity**:
 
 -   The **Main Image Processor** implementing the standard OTA image processor
     interface — the single entry point the Matter OTA Requestor calls.
--   The **Dispatcher** — header parsing (`MultiImageHeader` +
-    `SubImageHeader[]`), the `imageId → sub-processor` map, byte-level routing,
+-   The **Dispatcher** — header parsing (`MultiImageHeader` including its
+    `subImages[]`), the `imageId → sub-processor` map, byte-level routing,
     and `SkipData()` for absent entries (assumed up to date) and not-ready entries.
 -   The **Sub Image Processor interface** — the contract (`IsReadyForOTA()` +
     write method) that applications implement per image ID.
--   The **`MultiImageHeader` / `SubImageHeader` binary format** and the
-    packaging tool that produces `.ota` files conforming to it.
+-   The **`MultiImageHeader` binary format** (preamble + embedded `SubImageHeader`
+    array) and the packaging tool that produces `.ota` files conforming to it.
 -   A default sub-processor for the primary application firmware slot,
     registered automatically at startup for the platform-defined application
     image ID.
@@ -742,9 +613,9 @@ downloader and session layer as-is.
 
 ### 9.1 Platform Layer Requirements
 
-#### R1 — Sub Image Processor interface: three operations
+#### R1 — Sub Image Processor interface: five operations
 
-The Sub Image Processor interface must expose three operations:
+The Sub Image Processor interface must expose five operations:
 
 1. **Initialisation** (`Init(entry)`) — called once with the full `SubImageHeader`
    for each entry, before the readiness query. Must be light-weight: store the
@@ -760,13 +631,29 @@ The Sub Image Processor interface must expose three operations:
    `kReady`. On the first chunk the sub-processor performs heavy initialisation
    using the stored entry fields. The Dispatcher guarantees exactly `length`
    bytes total across all calls, in order, with no headers or framing.
+   SHA-256 verification is the sub-processor's responsibility: the framework
+   delivers `entry.sha256` via `Init()` but does not compute or check the
+   digest itself. The sub-processor must accumulate its own digest (e.g., using
+   a SHA-256 library) and verify it matches `entry.sha256` when the last chunk
+   arrives; if the digest does not match, `Write()` must return an error on
+   that last chunk.
+4. **Confirm** (`Confirm()`) — called during `ConfirmCurrentImage()` on every
+   sub-processor that had `Init()` called. For `kReady` sub-processors: verify
+   the component is now running `entry.version`. For `kNotReady` sub-processors:
+   post-reboot re-check of component version. Returns an error if verification
+   fails; any failure withholds `softwareVersion` confirmation.
+5. **Abort** (`Abort(context)`) — called on every sub-processor that had `Init()`
+   called whenever the session ends without completing normally. `context` is an
+   `AbortContext` carrying the reason (error or cancellation). Must discard
+   partial writes, release all resources acquired since `Init()`, and not block.
 
 The default readiness is `kReady`. Implementations whose component is always
-present and always ready need only implement the write operation.
+present and always ready need only implement `Write`, `Confirm`, and `Abort`;
+the others have safe defaults.
 
 #### R2 — Dispatcher routing behaviour
 
-For each `SubImageHeader` entry the Dispatcher must:
+For each entry in `MultiImageHeader.subImages[]` the Dispatcher must:
 
 1. Look up the registered sub-processor by `imageId`. Treat a missing
    registration as `kAlreadyUpToDate` — the component is assumed to be already
@@ -822,7 +709,7 @@ OTA flow.
 
 ### 10.1 Pick an image ID
 
-Pick **any value in the range 128–255** for a manufacturer-defined
+Pick **any value in the range `0x00000100`–`0xFFFFFFFF`** for a manufacturer-defined
 binary. There is no list to add to and no central authority.
 
 Document the chosen value in the product's release notes — it is a stable ABI
@@ -832,9 +719,9 @@ value across firmware releases.
 
 ### 10.2 Implement the Sub Image Processor interface
 
-The Sub Image Processor interface has three methods:
+The Sub Image Processor interface has five methods:
 
-**`Init(const SubImageHeader & entry)`** — called once for each entry, before
+**`Init(entry)`** — called once for each entry, before
 `IsReadyForOTA()`. Must be light-weight: store `entry.version`, `entry.length`,
 and `entry.sha256` for later use. Do not start heavy I/O here (bus negotiation,
 partition erase, etc.) — defer that to the first `Write()` call.
@@ -871,6 +758,35 @@ against `entry.length` (set in `Init()`). SHA-256 verification, commit, and
 bus-transfer completion must happen on the last chunk. What the application does
 with the bytes is entirely its own responsibility.
 
+**`Confirm()`** — called during `ConfirmCurrentImage()` on every sub-processor
+that had `Init()` called. The framework re-calls `Init(entry)` with the persisted
+`SubImageHeader` before calling `Confirm()`, so `entry.version` and other fields
+stored in `Init()` are available (§5.1).
+
+| Sub-processor state at download time | Expected action in `Confirm()`                              |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `kReady`                              | Verify the component is now running `entry.version`. Return error if not. |
+| `kNotReady`                           | Re-check whether the component is now at `entry.version` (post-reboot attempt). Return error if not. |
+| `kAlreadyUpToDate`                    | Return success immediately — no update was needed.           |
+
+Any failure withholds `softwareVersion` confirmation and triggers a rollback
+reboot. The retry hook (§5.2) is invoked before that reboot.
+
+**`Abort(context)`** — called on every sub-processor that had `Init()` called
+whenever the OTA session ends without completing normally. The `AbortContext`
+struct (defined in §4.1) carries the reason (`kError` or `kCancelled`) and, for
+errors, the platform error code. The sub-processor must:
+
+- Discard any partially written data.
+- Release all resources acquired since `Init()` (partition handles, bus locks,
+  DMA descriptors, etc.).
+- Not block.
+
+If the write target is an external component (co-processor, peripheral) and the
+write is not reversible (e.g., the co-processor was already flashed before
+`Abort()` is called), the sub-processor must record the inconsistency. The
+boot-time consistency check (§10.6) is the recovery path for this case.
+
 ### 10.3 Non-blocking writes
 
 The Dispatcher and Matter thread cannot stall waiting for slow bus
@@ -894,7 +810,7 @@ at application initialization.
 
 Registration only builds the `imageId → sub-processor` map. It does **not**
 determine processing order. Processing order is determined entirely by the order
-of `SubImageHeader[]` entries in the OTA file, which is set at packaging time
+of `MultiImageHeader.subImages[]` entries in the OTA file, which is set at packaging time
 (§10.5). A processor registered first can have an image ID that appears last in
 the file.
 
@@ -963,7 +879,7 @@ Three distinct version numbers exist in this system:
 | Number                              | Where it lives                                | Who reads it                                   | Semantics                                                                                                         |
 | ----------------------------------- | --------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Matter `softwareVersion`            | Outer OTA header & `BasicInformation` cluster | OTA Requestor / Provider                       | "Is there a newer bundle?" — represents the state where every component in the bundle is at its expected version. |
-| Per-binary `SubImageHeader.version` | `SubImageHeader` entries                      | Sub-processors, boot-time check                | Expected installed version of each individual component for this bundle.                                          |
+| Per-binary `SubImageHeader.version` | `MultiImageHeader.subImages[]` entries        | Sub-processors, boot-time check                | Expected installed version of each individual component for this bundle.                                          |
 | Component-reported version          | Read from the component at runtime            | Boot-time consistency check, `IsReadyForOTA()` | Ground truth of what is actually installed on that component right now.                                           |
 
 ### 12.1 Discipline
@@ -995,12 +911,12 @@ using stub sub-processors. Tests should cover:
 -   Boundary cases: block ends exactly at a binary boundary.
 -   Block split across two binaries: last bytes of binary A and first bytes of
     binary B arrive in the same block.
--   `IsReadyForOTA()` returning `kNotReady`: verify `SkipData()` is called with
-    `entry.length`, `Init()` and `Write()` are never called, and the entry is
-    recorded as `kNotReady` in the readiness map.
--   `IsReadyForOTA()` returning `kAlreadyUpToDate`: verify `SkipData()` is
-    called with `entry.length`, `Init()` and `Write()` are never called, and the
-    entry is recorded as `kAlreadyUpToDate` (counts as verified).
+-   `IsReadyForOTA()` returning `kNotReady`: verify `Init()` is called once,
+    `SkipData()` is called with `entry.length`, `Write()` is never called, and
+    the entry is recorded as `kNotReady` in the readiness map.
+-   `IsReadyForOTA()` returning `kAlreadyUpToDate`: verify `Init()` is called
+    once, `SkipData()` is called with `entry.length`, `Write()` is never called,
+    and the entry is recorded as `kAlreadyUpToDate` (counts as verified).
 -   No registered processor for an image ID: verify `SkipData()` is called with
     `entry.length`, the entry is recorded as `kAlreadyUpToDate` (not `kNotReady`),
     and confirmation is **not** blocked.
@@ -1062,6 +978,29 @@ previously running firmware after the failure.
 1. **Resume on disconnect.** BDX retries restart from byte 0; there is no
    per-binary progress checkpoint. If the device reboots mid-download it
    re-downloads from the beginning. Acceptable for most products.
+
+2. **`numImages = 0` validity.** The format allows `numImages = 0`, producing an
+   8-byte preamble with no sub-images. The spec currently accepts this (the
+   Dispatcher would switch immediately to routing mode with nothing to route).
+   Whether a zero-image bundle should be rejected at parse time or silently
+   allowed is unresolved. A future revision should make this explicit.
+
+3. **`numImages` upper bound.** No maximum is defined. A bundle with 255 entries
+   would require 8 + 255 × 48 = 12,248 bytes of NVS storage for persisted
+   headers alone. Devices with constrained NVS should define a platform-specific
+   limit and reject bundles that exceed it.
+
+4. **Delta / compressed binaries.** All binaries are assumed to be raw flat
+   images. Delta encoding or compression would reduce transfer size but requires
+   per-component decompression in `Write()`. Out of scope for this revision;
+   nothing in the format prevents a future `imageId` namespace assignment for
+   compressed variants.
+
+5. **Provider compliance for `BlockQueryWithSkip`.** C5 in Appendix A notes that
+   a non-compliant Provider may reject skip messages. There is currently no
+   negotiation mechanism. A future extension could add a capability bit in the
+   bundle header so that Providers can indicate skip support, allowing the
+   Dispatcher to fall back to read-and-discard if skip is unsupported.
 
 ---
 

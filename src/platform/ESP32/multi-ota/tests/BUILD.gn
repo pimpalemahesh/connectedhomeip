@@ -1,0 +1,160 @@
+# Copyright (c) 2026 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Standalone host unit tests for the ESP32 multi-image OTA framework.
+#
+# These deliberately do NOT belong to any CHIP aggregate test group such as
+# //src:tests or //:check, so they never run as part of connectedhomeip CI. They
+# are reachable only through the opt-in `chip_build_esp32_multi_ota_tests` gn arg
+# (declared in the root BUILD.gn, default false). Build and run on the host:
+#
+#     gn gen out/host --args='chip_build_esp32_multi_ota_tests=true'
+#     ninja -C out/host multi_ota_tests
+#     ./out/host/tests/TestMultiOTAImageHeader
+#     ./out/host/tests/TestEncryptedOTAHelper
+#
+# The ESP32 platform library only builds for the esp32 target, so each suite
+# compiles just the specific source(s) under test, supplying mock ESP-IDF headers
+# (mocks/) for the files that wrap esp_ota / esp_encrypted_img / esp_delta_ota.
+
+import("//build_overrides/build.gni")
+import("//build_overrides/chip.gni")
+import("//build_overrides/pigweed.gni")
+
+import("${chip_root}/build/chip/chip_test_suite.gni")
+
+# --- MultiOTAImageHeader parser (no ESP-IDF dependency) ---------------------
+chip_test_suite("header_parser_tests") {
+  output_name = "libMultiOtaHeaderTests"
+
+  test_sources = [ "TestMultiOTAImageHeader.cpp" ]
+  sources = [
+    "../MultiOTAImageHeader.cpp",
+    "../MultiOTAImageHeader.h",
+  ]
+
+  public_deps = [
+    "${chip_root}/src/crypto",
+    "${chip_root}/src/lib/core",
+    "${chip_root}/src/lib/support",
+  ]
+}
+
+# --- EncryptedOTAHelper (esp_encrypted_img mocked) --------------------------
+# Carries the mock include dir as a public_config so it propagates (through
+# public_deps) to both the suite's common lib and each test executable's TU.
+config("esp_idf_mock_includes") {
+  include_dirs = [ "mocks" ]
+}
+
+source_set("esp_encrypted_img_mock") {
+  sources = [
+    "mocks/esp_encrypted_img.h",
+    "mocks/esp_encrypted_img_mock.cpp",
+    "mocks/esp_encrypted_img_mock.h",
+    "mocks/esp_err.h",
+  ]
+  public_configs = [ ":esp_idf_mock_includes" ]
+}
+
+chip_test_suite("encrypted_ota_tests") {
+  output_name = "libMultiOtaEncryptedTests"
+
+  test_sources = [ "TestEncryptedOTAHelper.cpp" ]
+  sources = [
+    "../EncryptedOTAHelper.cpp",
+    "../EncryptedOTAHelper.h",
+  ]
+
+  public_deps = [
+    ":esp_encrypted_img_mock",
+    "${chip_root}/src/lib/core",
+    "${chip_root}/src/lib/support",
+  ]
+}
+
+# --- AppImageProcessor base path (esp_ota / esp_partition / esp_system mocked) ---
+source_set("esp_ota_mock") {
+  sources = [
+    "mocks/esp_app_format.h",
+    "mocks/esp_delta_ota.h",
+    "mocks/esp_ota_mock.cpp",
+    "mocks/esp_ota_mock.h",
+    "mocks/esp_ota_ops.h",
+    "mocks/esp_partition.h",
+    "mocks/esp_system.h",
+  ]
+  public_configs = [ ":esp_idf_mock_includes" ]
+}
+
+chip_test_suite("app_image_tests") {
+  output_name = "libMultiOtaAppImageTests"
+
+  test_sources = [ "TestAppImageProcessor.cpp" ]
+  sources = [
+    "../AppImageProcessor.cpp",
+    "../AppImageProcessor.h",
+  ]
+
+  # Apply() uses the auto-reboot timer path; defining this also avoids an unused
+  # static (HandleRestart) under -Werror. The timer never fires in the test.
+  defines = [
+    "CONFIG_OTA_AUTO_REBOOT_ON_APPLY=1",
+    "CONFIG_OTA_AUTO_REBOOT_DELAY_MS=50",
+  ]
+
+  public_deps = [
+    ":esp_ota_mock",
+    "${chip_root}/src/lib/core",
+    "${chip_root}/src/lib/support",
+    "${chip_root}/src/platform",
+  ]
+}
+
+# --- MultiImageOTAProcessorImpl sync surface (ESP32Utils.h shadowed) --------
+source_set("esp32_utils_mock") {
+  sources = [ "mocks/platform/ESP32/ESP32Utils.h" ]
+  public_configs = [ ":esp_idf_mock_includes" ]
+}
+
+chip_test_suite("dispatcher_tests") {
+  output_name = "libMultiOtaDispatcherTests"
+
+  test_sources = [ "TestMultiImageOTAProcessor.cpp" ]
+  sources = [
+    "../MultiImageOTAProcessorImpl.cpp",
+    "../MultiImageOTAProcessorImpl.h",
+    "../MultiOTAImageHeader.cpp",
+    "../MultiOTAImageHeader.h",
+    "mocks/ota_requestor_stub.cpp",
+  ]
+
+  public_deps = [
+    ":esp32_utils_mock",
+    "${chip_root}/src/app/clusters/ota-requestor:interface",
+    "${chip_root}/src/crypto",
+    "${chip_root}/src/lib/core",
+    "${chip_root}/src/lib/support",
+    "${chip_root}/src/platform",
+  ]
+}
+
+group("multi_ota_tests") {
+  deps = [
+    ":app_image_tests",
+    ":dispatcher_tests",
+    ":encrypted_ota_tests",
+    ":header_parser_tests",
+  ]
+}

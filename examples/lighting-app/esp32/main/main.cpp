@@ -16,6 +16,7 @@
  */
 
 #include "DeviceCallbacks.h"
+#include "MockSubImageProcessor.h"
 
 #include "AppTask.h"
 #include "esp_log.h"
@@ -143,6 +144,10 @@ static void InitServer(intptr_t context)
     DeviceCallbacksDelegate::Instance().SetAppDelegate(&sAppDeviceCallbacksDelegate);
     Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
     InitInsights();
+
+#ifdef CONFIG_ENABLE_MULTI_IMAGE_OTA
+    RegisterMockSubImageProcessors();
+#endif
 }
 
 extern "C" void app_main()

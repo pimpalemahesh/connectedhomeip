@@ -121,7 +121,7 @@ esp_err_t OTARcpProcessorImpl::OnOtaRcpProcessBlock(const uint8_t * buffer, size
 
 esp_err_t OTARcpProcessorImpl::OnOtaRcpFinalize()
 {
-    esp_err_t err = esp_rcp_ota_end(mRcpOtaHandle);
+    esp_err_t err = s(mRcpOtaHandle);
     ResetRcpOtaState();
     return err;
 }

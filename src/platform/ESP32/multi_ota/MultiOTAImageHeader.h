@@ -46,8 +46,7 @@ struct SubImageHeader
     uint32_t version; // expected installed version of this binary
     uint32_t offset;  // byte offset of binary data from payload start
     uint32_t length;  // exact byte count of the binary
-    // SHA-256 of this binary as sent over the wire. For an encrypted or delta image, that is the
-    // encrypted/patch bytes — not the final decrypted or rebuilt image.
+    // SHA-256 of this binary as sent over the wire.
     uint8_t sha256[Crypto::kSHA256_Hash_Length];
 };
 

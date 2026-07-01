@@ -138,12 +138,12 @@ OTARcpProcessorImpl gOtaRcpDelegate;
 
 // WARNING: This is just an example for using key for decrypting the encrypted OTA image
 // Please do not use it as is for production use cases
-#ifdef CONFIG_ENABLE_ENCRYPTED_OTA
+#if defined(CONFIG_ENABLE_ENCRYPTED_OTA) && !defined(CONFIG_ENABLE_MULTI_IMAGE_OTA)
 extern const char sOTADecryptionKeyStart[] asm("_binary_esp_image_encryption_key_pem_start");
 extern const char sOTADecryptionKeyEnd[] asm("_binary_esp_image_encryption_key_pem_end");
 
 CharSpan sOTADecryptionKey(sOTADecryptionKeyStart, sOTADecryptionKeyEnd - sOTADecryptionKeyStart);
-#endif // CONFIG_ENABLE_ENCRYPTED_OTA
+#endif // CONFIG_ENABLE_ENCRYPTED_OTA && !CONFIG_ENABLE_MULTI_IMAGE_OTA
 
 } // namespace
 
@@ -171,13 +171,9 @@ void OTAHelpers::InitOTARequestor()
         gDownloader.SetImageProcessorDelegate(&gImageProcessor);
         gRequestorUser.Init(&gRequestorCore, &gImageProcessor);
 
-#ifdef CONFIG_ENABLE_ENCRYPTED_OTA
-#ifdef CONFIG_ENABLE_MULTI_IMAGE_OTA
-        LogErrorOnFailure(gAppImageProcessor.InitEncryptedOTA(sOTADecryptionKey));
-#else
+#if defined(CONFIG_ENABLE_ENCRYPTED_OTA) && !defined(CONFIG_ENABLE_MULTI_IMAGE_OTA)
         gImageProcessor.InitEncryptedOTA(sOTADecryptionKey);
-#endif
-#endif // CONFIG_ENABLE_ENCRYPTED_OTA
+#endif // CONFIG_ENABLE_ENCRYPTED_OTA && !CONFIG_ENABLE_MULTI_IMAGE_OTA
 
         if (gUserConsentState != chip::ota::UserConsentState::kUnknown)
         {

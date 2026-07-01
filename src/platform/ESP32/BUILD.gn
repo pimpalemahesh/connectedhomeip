@@ -36,7 +36,6 @@ declare_args() {
   chip_memory_alloc_mode = "default"
 
   chip_enable_multi_ota_requestor = false
-  chip_enable_encrypted_ota = false
 }
 
 defines = [
@@ -106,12 +105,6 @@ static_library("ESP32") {
         "multi_ota/MultiOTAImageHeader.h",
         "multi_ota/SubImageProcessor.h",
       ]
-      if (chip_enable_encrypted_ota) {
-        sources += [
-          "multi_ota/EncryptedOTAHelper.cpp",
-          "multi_ota/EncryptedOTAHelper.h",
-        ]
-      }
     } else {
       sources += [
         "OTAImageProcessorImpl.cpp",

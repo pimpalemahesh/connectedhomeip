@@ -493,8 +493,7 @@ elseif("mdns" IN_LIST build_components)
     list(APPEND matter_requires mdns)
 endif()
 
-# esp_rcp_update is only present when the border router drives an external RCP
-# (not needed with a native 15.4 radio, e.g. ESP32-S31).
+# esp_rcp_update is only needed when the border router drives an external RCP.
 if (CONFIG_OPENTHREAD_BORDER_ROUTER AND "espressif__esp_rcp_update" IN_LIST build_components)
     list(APPEND matter_requires espressif__esp_rcp_update)
 endif()

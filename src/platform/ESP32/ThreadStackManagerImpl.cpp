@@ -58,10 +58,9 @@ CHIP_ERROR ThreadStackManagerImpl::_InitThreadStack()
     esp_err_t espErr = openthread_init_stack();
     VerifyOrReturnError(espErr == ESP_OK, ESP32Utils::MapError(espErr));
 
-    // DoInit() -> ConfigureThreadStack() takes the Thread stack lock itself. Do not nest another
-    // lock here: the ESP OpenThread UDP/TREL ports release exactly one level of the task-switching
-    // lock around tcpip_exec(), so a nested lock keeps lwIP blocked (it needs the lock for multicast
-    // joins) while this task waits on lwIP, deadlocking boot when a Thread dataset is already stored.
+    // ConfigureThreadStack() (called by DoInit()) takes the Thread stack lock itself. A nested lock here
+    // leaves one level held while the ESP OpenThread port waits on lwIP (otPlatUdpSocket), and lwIP
+    // needs that lock for multicast joins: boot deadlocks whenever a Thread dataset is already stored.
     err = GenericThreadStackManagerImpl_OpenThread<ThreadStackManagerImpl>::DoInit(esp_openthread_get_instance());
     ReturnErrorOnFailure(err);
 #if !defined(CONFIG_CHIP_USE_OT_ENDPOINT) && defined(CONFIG_CHIP_DEVICE_ENABLE_THREAD_MESHCOP)
